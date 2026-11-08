@@ -1,3 +1,5 @@
+> Обновление Plus от 09.11.2026: Sol 6.1 — основной агент, Luna 6 — исполнитель, Astra 6 — проверка, Terra 6.1 — визуальная проверка. Установщик проверяет версию Codex CLI (для Astra нужна >= 0.153.0, для Terra — >= 0.159.0) и сохраняет резервные копии перед подтверждённой заменой файлов. Существующие глобальные MCP-настройки не переписываются.
+
 # Установка на Windows для ChatGPT Plus
 
 Эта инструкция рассчитана на профиль **Plus**.
@@ -6,9 +8,11 @@
 
 Codex будет использовать:
 
-- GPT-5.6 Luna `max` как главный root/orchestrator;
-- GPT-5.6 Luna `medium` для explorer, worker, tester и researcher;
-- GPT-6 Astra `low` как независимый reviewer;
+- GPT-6.1 Sol `high` как главный root/orchestrator;
+- GPT-6 Luna `medium` для explorer и worker, `high` для tester;
+- GPT-6.1 Sol `medium` для researcher;
+- GPT-6 Astra `medium` как независимый reviewer;
+- GPT-6.1 Terra `medium` как read-only visual-inspector;
 - до 4 concurrent subagents по умолчанию.
 
 ## Вариант 1 — установка в конкретный проект

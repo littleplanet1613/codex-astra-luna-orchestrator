@@ -1,0 +1,61 @@
+name: validate Codex profiles
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  plus-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Parse TOML and test Plus safety, roles and installer
+        run: python -m unittest discover -s tests -p 'test_*.py'
+  powershell-parser:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Windows installer syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./setup.ps1), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+          Write-Output 'PowerShell parser: PASS'
+      - name: Exercise Windows installer in disposable target
+        shell: pwsh
+        run: ./tests/test_setup.ps1
+
+  open-steps-crosscheck:
+    name: Open Steps independent hook and safety tests on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout Open Steps proposed commit without write permissions
+        uses: actions/checkout@v4
+        with:
+          repository: littleplanet1613/open-steps
+          ref: 46fdf4924cac0ee7ac08315a926ce92bf6b0666b
+          path: open-steps
+          persist-credentials: false
+      - name: Run routing safety regression suite
+        working-directory: open-steps
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Exercise Open Steps session and stop hooks
+        working-directory: open-steps
+        run: bash hooks/test.sh
+      - name: Verify DCO sign-off trailer
+        working-directory: open-steps
+        run: |
+          git log -1 --format=%B | grep -q '^Signed-off-by: littleplanet1613 <littleplanet1613@gmail.com>$'

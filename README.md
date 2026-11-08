@@ -1,8 +1,10 @@
+> **Plus profile update (2026-11-09):** the Plus root uses `gpt-6.1-sol` (high); researcher uses Sol (medium), explorer/worker Luna (medium), tester Luna (high), reviewer Astra (medium), and new read-only visual-inspector Terra (medium). The Pro root and existing Pro role pins are unchanged. Codex CLI >= 0.153.0 is required for Astra and >= 0.159.0 for Terra; actual model access varies by account. The Windows installer now checks the CLI version, repairs a duplicate installation loop, and backs up existing components before approved overwrite. This repository never installs automatically from GitHub. See `docs/PLUS_2026_11_UPGRADE.md` for validation and rollback.
+
 # Codex Astra Orchestrator + Luna Subagents
 
-A configurable Codex setup where GPT-6 Astra is the root/orchestrator and reviewer, while GPT-5.6 Luna is the default and pinned model for execution subagents.
+A configurable multi-agent Codex setup. Plus: GPT-6.1 Sol coordinates, GPT-6 Luna executes, GPT-6.1 Sol researches, GPT-6 Astra reviews, and GPT-6.1 Terra checks visual artifacts. Pro keeps its existing Astra-root/Luna-execution profile.
 
-The installer asks which Codex plan you are on. Pro uses GPT-6 Astra at medium reasoning to orchestrate and GPT-5.6 Luna at max reasoning for execution subagents. Plus uses GPT-5.6 Luna at max reasoning to orchestrate and medium reasoning for execution subagents. Both plans retain the separate GPT-6 Astra reviewer at low reasoning.
+The installer asks which Codex plan you are on. Pro remains on GPT-6 Astra medium for the root, GPT-5.6 Luna max for execution, and Astra low for review. Plus uses the updated six-agent model matrix below.
 
 ## Layout
 
@@ -34,10 +36,10 @@ The installer asks which Codex plan you are on. Pro uses GPT-6 Astra at medium r
 
 | Role or setting | Plus | Pro |
 |---|---|---|
-| Orchestrator | GPT-5.6 Luna — max | GPT-6 Astra — medium |
-| Explorer, worker, tester, researcher | GPT-5.6 Luna — medium | GPT-5.6 Luna — max |
-| Default subagent | GPT-5.6 Luna — medium | GPT-5.6 Luna — max |
-| Independent reviewer | GPT-6 Astra — low | GPT-6 Astra — low |
+| Orchestrator | GPT-6.1 Sol — high | GPT-6 Astra — medium |
+| Explorer/worker Luna 6 medium; tester Luna 6 high; researcher Sol 6.1 medium | GPT-5.6 Luna — max |
+| Default subagent | GPT-6 Luna — medium | GPT-5.6 Luna — max |
+| Independent reviewer | GPT-6 Astra — medium | GPT-6 Astra — low |
 | Concurrent subagent limit | 4 | 4 |
 
 ### Pro — `profiles/pro/codex/config.toml`
@@ -59,8 +61,8 @@ default_subagent_reasoning_effort = "max"
 ### Plus — `profiles/plus/codex/config.toml`
 
 ```toml
-model = "gpt-5.6-luna"
-model_reasoning_effort = "max"
+model = "gpt-6.1-sol"
+model_reasoning_effort = "high"
 
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
@@ -68,7 +70,7 @@ sandbox_mode = "workspace-write"
 [agents]
 enabled = true
 max_concurrent_threads_per_session = 4
-default_subagent_model = "gpt-5.6-luna"
+default_subagent_model = "gpt-6-luna"
 default_subagent_reasoning_effort = "medium"
 ```
 
@@ -76,9 +78,9 @@ The installer copies `profiles/<plan>/codex` to `.codex` and
 `profiles/<plan>/agents` to `.agents` in the target repository. Each profile
 is ready to copy, with no configuration rewriting during setup.
 
-Each role file is explicitly pinned to its intended model: Luna for explorer, worker, tester, and researcher; Astra for reviewer. This means changing only `default_subagent_model` will affect generic spawned agents, but not the named roles.
+Each Plus role is explicitly registered using `[agents."name"]` and a relative `config_file` path. Named-role model pins live in `profiles/plus/codex/agents/*.toml`; changing only `default_subagent_model` affects generic spawned agents, not these named roles.
 
-The four Luna role files explicitly set `model_reasoning_effort = "max"` in the Pro profile and `"medium"` in the Plus profile. The reviewer keeps its explicit `low` effort in both.
+Pro's four Luna role files remain at `max`, with Astra reviewer at `low`. Plus uses Luna medium for explorer/worker, Luna high for tester, Sol medium for researcher, Astra medium for reviewer and Terra medium for visual-inspector.
 
 When updating an existing installation, copy the role files along with `config.toml` from the selected profile. Replace `<plan>` below with `pro` or `plus`.
 
@@ -137,9 +139,7 @@ Select plan [1/2] (default 1):
 ```
 
 The selected configuration sets both the root and default subagent reasoning.
-Agent role files are shared between plans: explorer, worker, tester, and
-researcher use Luna at the plan's default effort; the reviewer uses Astra at low
-effort on both plans.
+The Pro and Plus role files are different and must be copied from the selected plan. Only Plus has visual-inspector, and Plus registers all six roles in config.toml.
 
 The installer then asks whether to install each component:
 
@@ -221,7 +221,7 @@ and reviewer for an independent final review.
 ## Suggested topology
 
 ```text
-                 GPT-6 Astra
+                 GPT-6.1 Sol
              root / orchestrator
                       |
       +---------------+---------------+
@@ -282,15 +282,15 @@ manual or global setup see [`guides/plus-plan.md`](guides/plus-plan.md):
 
 ```toml
 # Root
-model = "gpt-5.6-luna"
-model_reasoning_effort = "max"
+model = "gpt-6.1-sol"
+model_reasoning_effort = "high"
 ```
 
 ## Important behavior
 
 Explicit model choices during a spawn override `[agents]` defaults. Custom agent files that specify `model` or `model_reasoning_effort` also take precedence over inherited defaults.
 
-The execution role files are pinned to Luna intentionally, while the reviewer is pinned to Astra for independent final review. Astra remains the orchestrator unless you deliberately change the role configuration.
+The execution role files are pinned to Luna intentionally, while the reviewer is pinned to Astra for independent final review. The Plus root is Sol; the Pro root remains Astra. The root role is selected by the installed profile.
 
 ## License
 
