@@ -1,41 +1,37 @@
-# Plus Plan
+# Plus plan — Codex 6.x
 
-Choose this profile for a Luna root at `max` reasoning and Luna execution
-subagents at `medium` reasoning, with an Astra reviewer at `low`.
+The Plus profile uses GPT-6.1 Sol high as root, GPT-6 Luna for implementation,
+GPT-6.1 Sol for research, GPT-6 Astra for independent review and GPT-6.1 Terra
+for visual QA. Runtime access to individual models depends on the user's Codex
+login and rollout status.
 
-The installers (`setup.sh`, `setup.ps1`) ask for your plan and install this
-profile automatically when you select `Plus`. Setup copies
-`profiles/plus/codex/` to `.codex/` and `profiles/plus/agents/` to `.agents/`
-without rewriting configuration. For manual installation, copy those folders
-and the repository's `AGENTS.md` to the target.
+| Role | Model | Reasoning | Access |
+|---|---|---|---|
+| Root / orchestrator | gpt-6.1-sol | high | workspace-write |
+| Explorer | gpt-6-luna | medium | read-only |
+| Worker | gpt-6-luna | medium | workspace-write |
+| Tester | gpt-6-luna | high | workspace-write |
+| Researcher | gpt-6.1-sol | medium | read-only |
+| Reviewer | gpt-6-astra | medium | read-only |
+| Visual-inspector | gpt-6.1-terra | medium | read-only |
 
-For a global setup, merge `profiles/plus/codex/config.toml` into:
+The six named roles are declared in `profiles/plus/codex/config.toml` with
+relative `config_file` paths and pinned models in separate agent files. The
+default generic spawned agent uses Luna medium. The configured concurrency
+limit is four.
 
-`~/.codex/config.toml`
+Use `setup.ps1` on Windows, select plan **2 (Plus)** and review the target
+paths. Existing files require an explicit overwrite decision and backups are
+created before replacement. Existing global MCP configuration is not replaced.
+For global installation, merge the project settings into
+`~/.codex/config.toml` instead of overwriting it, and copy the named role
+files into `~/.codex/agents/`.
 
-```toml
-# Root
-model = "gpt-6.1-sol"
-model_reasoning_effort = "high"
+Keep `approval_policy = "on-request"` and `sandbox_mode = "workspace-write"`.
+Do not weaken a read-only agent's sandbox or expand parallelism just to improve
+throughput. Merge, deployment, deletion and changes to permissions always
+require explicit authorization.
 
-[agents]
-enabled = true
-max_concurrent_threads_per_session = 4
-default_subagent_model = "gpt-6.1-sol"
-default_subagent_reasoning_effort = "medium"
-```
-
-Subagents keep their pinned models from `.codex/agents/*.toml`. Explorer,
-worker, tester, and researcher explicitly set `model = "gpt-6.1-sol"` and
-`model_reasoning_effort = "medium"`. The reviewer stays on GPT-6 Astra
-on the Plus plan too: it is a single, read-only, `low`-effort thread, and it
-gives you an independent review by a different model than the one that
-planned and wrote the change. If you want the whole session on Luna, change
-`model` in `.codex/agents/reviewer.toml` as well.
-
-See `token-usage.md` for how to measure the difference on your own tasks.
-
-For global installation, also copy `profiles/plus/codex/agents/` to
-`~/.codex/agents/` and `profiles/plus/agents/skills/astra-orchestrator/` to
-`~/.agents/skills/astra-orchestrator/`. Use the skill from the same profile
-as the configuration so its model and reasoning instructions match.
+Use `codex --version` and the interactive `/model` picker to validate access
+before using the profile. GPT-6 Astra requires Codex CLI >= 0.153.0 and
+GPT-6.1 Terra >= 0.159.0. For usage measurement, see `token-usage.md`.

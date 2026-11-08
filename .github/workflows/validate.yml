@@ -46,7 +46,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: littleplanet1613/open-steps
-          ref: 1533534922cd03f2df0db742e56aa3fbc083fe94
+          ref: 46fdf4924cac0ee7ac08315a926ce92bf6b0666b
           path: open-steps
           persist-credentials: false
       - name: Run routing safety regression suite

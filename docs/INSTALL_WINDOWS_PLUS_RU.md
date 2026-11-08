@@ -8,9 +8,11 @@
 
 Codex будет использовать:
 
-- GPT-5.6 Luna `max` как главный root/orchestrator;
-- GPT-5.6 Luna `medium` для explorer, worker, tester и researcher;
-- GPT-6 Astra `low` как независимый reviewer;
+- GPT-6.1 Sol `high` как главный root/orchestrator;
+- GPT-6 Luna `medium` для explorer и worker, `high` для tester;
+- GPT-6.1 Sol `medium` для researcher;
+- GPT-6 Astra `medium` как независимый reviewer;
+- GPT-6.1 Terra `medium` как read-only visual-inspector;
 - до 4 concurrent subagents по умолчанию.
 
 ## Вариант 1 — установка в конкретный проект

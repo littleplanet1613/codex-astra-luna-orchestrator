@@ -2,7 +2,7 @@
 
 Этот репозиторий настраивает Codex как команду из нескольких специализированных агентов.
 
-Для профиля **Plus** главный агент работает на **GPT-5.6 Luna** с максимальным reasoning, а отдельные подзадачи выполняют специализированные Luna-агенты. Финальную независимую проверку делает **GPT-6 Astra reviewer**.
+В профиле **Plus** главный агент — **GPT-6.1 Sol High**. Исполнительные роли используют GPT-6 Luna, исследователь — GPT-6.1 Sol, независимый reviewer — GPT-6 Astra, а визуальные материалы проверяет GPT-6.1 Terra.
 
 ## Зачем это нужно
 
@@ -22,14 +22,15 @@
 
 | Роль | Модель | Reasoning | Доступ |
 |---|---|---:|---|
-| Root / orchestrator | GPT-5.6 Luna | max | workspace-write |
-| Explorer | GPT-5.6 Luna | medium | read-only |
-| Worker | GPT-5.6 Luna | medium | workspace-write |
-| Tester | GPT-5.6 Luna | medium | workspace-write |
-| Researcher | GPT-5.6 Luna | medium | read-only |
-| Reviewer | GPT-6 Astra | low | read-only |
+| Root / orchestrator | GPT-6.1 Sol | high | workspace-write |
+| Explorer | GPT-6 Luna | medium | read-only |
+| Worker | GPT-6 Luna | medium | workspace-write |
+| Tester | GPT-6 Luna | high | workspace-write |
+| Researcher | GPT-6.1 Sol | medium | read-only |
+| Reviewer | GPT-6 Astra | medium | read-only |
+| Visual-inspector | GPT-6.1 Terra | medium | read-only |
 
-Главный принцип профиля Plus: **Luna делает основную работу, Astra тратится только на независимый review**.
+Главный принцип профиля Plus: **Sol координирует, Luna выполняет, Astra проверяет по необходимости, Terra анализирует визуальные результаты**.
 
 ## Когда использовать оркестратор
 
@@ -65,6 +66,10 @@
 ### `reviewer`
 
 Независимый ревьюер на Astra. Ничего не редактирует. Ищет реальные ошибки: регрессии, проблемы безопасности, целостности данных, совместимости, concurrency и недостающие важные тесты.
+
+### `visual-inspector`
+
+Независимо проверяет скриншоты, чертежи и визуальные результаты. Не изменяет файлы и не делает выводов, которых нет на изображении.
 
 ### Root / orchestrator
 
