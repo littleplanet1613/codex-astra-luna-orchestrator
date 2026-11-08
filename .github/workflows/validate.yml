@@ -30,3 +30,6 @@ jobs:
             exit 1
           }
           Write-Output 'PowerShell parser: PASS'
+      - name: Exercise Windows installer in disposable target
+        shell: pwsh
+        run: ./tests/test_setup.ps1
