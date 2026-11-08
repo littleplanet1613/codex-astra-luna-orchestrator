@@ -286,6 +286,11 @@ function Install-Component {
             finally {
                 $reader.Dispose()
             }
+            $backupRoot = Join-Path $TargetDirectory ('.codex-setup-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
+            New-Item -ItemType Directory -Path $backupRoot | Out-Null
+            $backupPath = Join-Path $backupRoot $Name
+            Copy-Item -LiteralPath $destinationPath -Destination $backupPath
+            [Console]::WriteLine("Backup: $backupPath")
             [IO.File]::AppendAllText($destinationPath, "`n`n" + $instructions, $encoding)
             [Console]::WriteLine("Appended instructions to ${Name}. Existing contents preserved.")
             return $true
