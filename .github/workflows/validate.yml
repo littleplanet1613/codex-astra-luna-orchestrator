@@ -33,3 +33,29 @@ jobs:
       - name: Exercise Windows installer in disposable target
         shell: pwsh
         run: ./tests/test_setup.ps1
+
+  open-steps-crosscheck:
+    name: Open Steps independent hook and safety tests on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout Open Steps proposed commit without write permissions
+        uses: actions/checkout@v4
+        with:
+          repository: littleplanet1613/open-steps
+          ref: 1533534922cd03f2df0db742e56aa3fbc083fe94
+          path: open-steps
+          persist-credentials: false
+      - name: Run routing safety regression suite
+        working-directory: open-steps
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Exercise Open Steps session and stop hooks
+        working-directory: open-steps
+        run: bash hooks/test.sh
+      - name: Verify DCO sign-off trailer
+        working-directory: open-steps
+        run: |
+          git log -1 --format=%B | grep -q '^Signed-off-by: littleplanet1613 <littleplanet1613@gmail.com>$'
