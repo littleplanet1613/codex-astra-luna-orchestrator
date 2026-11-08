@@ -18,3 +18,7 @@ Security preserved: `approval_policy = "on-request"`, `sandbox_mode = "workspace
 Windows installer: it warns about existing files, requires explicit consent to overwrite, saves a timestamped backup in the target repo before replacing approved components, and preserves unrelated MCP/global settings. For rollback, restore from the backup directory. To validate PowerShell syntax locally on Windows: `$tokens=$null; $errors=$null; [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path .\setup.ps1),[ref]$tokens,[ref]$errors); $errors`. To validate models, run Codex CLI interactively with the selected profile; a static TOML parse cannot prove model access.
 
 This PR deliberately does not change the Pro profile's five pre-existing role pins. Pro receives the streamlined orchestration skill; only Plus adds the visual-inspector.
+
+## Explicit role registration
+
+Each Plus role is declared in `.codex/config.toml` as `[agents."<role>"]` with a relative `config_file = "agents/<role>.toml"`. This is necessary for reliable custom-role discovery in Codex. The role-specific file controls the model and sandbox mode. Verify actual role spawning when Codex CLI is available on Windows.

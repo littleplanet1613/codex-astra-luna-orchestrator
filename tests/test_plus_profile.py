@@ -24,6 +24,10 @@ class PlusProfileTests(unittest.TestCase):
         self.assertEqual(config["sandbox_mode"], "workspace-write")
         self.assertEqual(config["agents"]["max_concurrent_threads_per_session"], 4)
         self.assertEqual(config["agents"]["default_subagent_model"], "gpt-6-luna")
+        self.assertEqual({key for key, value in config["agents"].items() if isinstance(value, dict)}, set(ROLES))
+        for name in ROLES:
+            self.assertEqual(config["agents"][name]["config_file"], f"agents/{name}.toml")
+            self.assertTrue(config["agents"][name]["description"])
 
     def test_six_role_pins_and_permissions(self):
         for name, (model, effort, sandbox) in ROLES.items():
