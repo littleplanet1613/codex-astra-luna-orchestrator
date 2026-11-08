@@ -50,10 +50,31 @@ function Read-Confirmation {
     }
 }
 
+function Test-CodexCli {
+    $cmd = Get-Command codex -ErrorAction SilentlyContinue
+    if ($null -eq $cmd) {
+        [Console]::WriteLine('Codex CLI not found. Installation can continue; model compatibility NOT CHECKED.')
+        return
+    }
+    $versionText = (& codex --version 2>&1 | Out-String).Trim()
+    [Console]::WriteLine("Detected $versionText")
+    if ($versionText -match '(\d+)\.(\d+)\.(\d+)') {
+        $version = [version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
+        if ($version -lt [version]'0.153.0') {
+            [Console]::WriteLine('WARNING: GPT-6 Astra needs Codex CLI >= 0.153.0.')
+        }
+        if ($version -lt [version]'0.159.0') {
+            [Console]::WriteLine('WARNING: GPT-6.1 Terra visual-inspector needs Codex CLI >= 0.159.0. Update manually before using this profile.')
+        }
+    } else {
+        [Console]::WriteLine('WARNING: Could not parse Codex CLI version; compatibility NOT CHECKED.')
+    }
+}
+
 function Read-Plan {
     [Console]::WriteLine('Codex plan:')
     [Console]::WriteLine('  1) Pro  - GPT-6 Astra orchestrates, GPT-5.6 Luna executes, GPT-6 Astra reviews')
-    [Console]::WriteLine('  2) Plus - GPT-5.6 Luna (max reasoning) orchestrates, GPT-5.6 Luna executes, GPT-6 Astra reviews')
+    [Console]::WriteLine('  2) Plus - GPT-6.1 Sol (high reasoning) orchestrates, GPT-6 Luna executes, GPT-6 Astra reviews')
 
     while ($true) {
         [Console]::Write('Select plan [1/2] (default 1): ')
@@ -277,6 +298,12 @@ function Install-Component {
             return $false
         }
 
+        $backupRoot = Join-Path $TargetDirectory ('.codex-setup-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
+        New-Item -ItemType Directory -Path $backupRoot | Out-Null
+        $backupPath = Join-Path $backupRoot $Name
+        Copy-Item -LiteralPath $destinationPath -Destination $backupPath -Recurse -Force
+        [Console]::WriteLine("Backup: $backupPath")
+
         if ($sourceItem.PSIsContainer -and $destinationItem.PSIsContainer) {
             Copy-DirectoryContents -Source $sourcePath -Destination $destinationPath
         }
@@ -317,13 +344,12 @@ try {
         throw 'Target repository must be different from the setup source directory.'
     }
 
+    Test-CodexCli
     $plan = Read-Plan
     $profileDirectory = Join-Path $scriptDir "profiles/$plan"
 
     $installed = 0
     foreach ($component in '.codex', '.agents', 'AGENTS.md') {
-        if (Read-Confirmation -Prompt "Install ${component}?" -DefaultYes $true) {
-            if (Install-Component -Name $component -TargetDirectory $targetDirectory) {
         if (Read-Confirmation -Prompt "Install $component?" -DefaultYes $true) {
             $result = if ($component -eq '.codex') {
                 Install-Component -Name $component -TargetDirectory $targetDirectory -SourcePath (Join-Path $profileDirectory "codex")
