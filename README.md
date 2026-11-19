@@ -1,8 +1,8 @@
-> **Plus profile update (2026-11-09):** the Plus root uses `gpt-6.1-sol` (high); researcher uses Sol (medium), explorer/worker Luna (medium), tester Luna (high), reviewer Astra (medium), and new read-only visual-inspector Terra (medium). The Pro root and existing Pro role pins are unchanged. Codex CLI >= 0.153.0 is required for Astra and >= 0.159.0 for Terra; actual model access varies by account. The Windows installer now checks the CLI version, repairs a duplicate installation loop, and backs up existing components before approved overwrite. This repository never installs automatically from GitHub. See `docs/PLUS_2026_11_UPGRADE.md` for validation and rollback.
+> **Plus profile update (2026-11-19):** the Plus root uses `gpt-6.2-sol` (high); researcher uses Sol (medium), explorer/worker Luna (medium), tester Luna (high), reviewer GPT-6.2 Astra (medium), and new read-only visual-inspector Terra (medium). The Pro root and existing Pro role pins are unchanged. Plus requires Codex CLI >= 0.166.0; actual model access varies by account. The Windows installer now checks the CLI version, repairs a duplicate installation loop, and backs up existing components before approved overwrite. This repository never installs automatically from GitHub. See `docs/PLUS_2026_11_UPGRADE.md` for validation and rollback.
 
 # Codex Astra Orchestrator + Luna Subagents
 
-A configurable multi-agent Codex setup. Plus: GPT-6.1 Sol coordinates, GPT-6 Luna executes, GPT-6.1 Sol researches, GPT-6 Astra reviews, and GPT-6.1 Terra checks visual artifacts. Pro keeps its existing Astra-root/Luna-execution profile.
+A configurable multi-agent Codex setup. Plus: GPT-6.2 Sol coordinates, GPT-6 Luna executes, GPT-6.2 Sol researches, GPT-6.2 Astra reviews, and GPT-6.1 Terra checks visual artifacts. Pro keeps its existing Astra-root/Luna-execution profile.
 
 The installer asks which Codex plan you are on. Pro remains on GPT-6 Astra medium for the root, GPT-5.6 Luna max for execution, and Astra low for review. Plus uses the updated six-agent model matrix below.
 
@@ -36,10 +36,10 @@ The installer asks which Codex plan you are on. Pro remains on GPT-6 Astra mediu
 
 | Role or setting | Plus | Pro |
 |---|---|---|
-| Orchestrator | GPT-6.1 Sol — high | GPT-6 Astra — medium |
+| Orchestrator | GPT-6.2 Sol — high | GPT-6 Astra — medium |
 | Explorer/worker Luna 6 medium; tester Luna 6 high; researcher Sol 6.1 medium | GPT-5.6 Luna — max |
 | Default subagent | GPT-6 Luna — medium | GPT-5.6 Luna — max |
-| Independent reviewer | GPT-6 Astra — medium | GPT-6 Astra — low |
+| Independent reviewer | GPT-6.2 Astra — medium | GPT-6 Astra — low |
 | Concurrent subagent limit | 4 | 4 |
 
 ### Pro — `profiles/pro/codex/config.toml`
@@ -61,7 +61,7 @@ default_subagent_reasoning_effort = "max"
 ### Plus — `profiles/plus/codex/config.toml`
 
 ```toml
-model = "gpt-6.1-sol"
+model = "gpt-6.2-sol"
 model_reasoning_effort = "high"
 
 approval_policy = "on-request"
@@ -91,7 +91,7 @@ If you want all named roles, including the reviewer, to follow the `[agents]` de
 Clone this repository:
 
 ```bash
-git clone https://github.com/donvito/codex-astra-luna-orchestrator.git
+git clone https://github.com/littleplanet1613/codex-astra-luna-orchestrator.git
 cd codex-astra-luna-orchestrator
 ```
 
@@ -134,7 +134,7 @@ Next, choose your Codex plan:
 ```text
 Codex plan:
   1) Pro  - GPT-6 Astra orchestrates, GPT-5.6 Luna executes, GPT-6 Astra reviews
-  2) Plus - GPT-5.6 Luna (max reasoning) orchestrates, GPT-5.6 Luna executes, GPT-6 Astra reviews
+  2) Plus - GPT-6.2 Sol (high reasoning) orchestrates, GPT-6 Luna executes, GPT-6.2 Astra reviews
 Select plan [1/2] (default 1):
 ```
 
@@ -221,7 +221,7 @@ and reviewer for an independent final review.
 ## Suggested topology
 
 ```text
-                 GPT-6.1 Sol
+                 GPT-6.2 Sol
              root / orchestrator
                       |
       +---------------+---------------+
@@ -282,7 +282,7 @@ manual or global setup see [`guides/plus-plan.md`](guides/plus-plan.md):
 
 ```toml
 # Root
-model = "gpt-6.1-sol"
+model = "gpt-6.2-sol"
 model_reasoning_effort = "high"
 ```
 

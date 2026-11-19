@@ -51,6 +51,7 @@ function Read-Confirmation {
 }
 
 function Test-CodexCli {
+    param([string]$Plan)
     $cmd = Get-Command codex -ErrorAction SilentlyContinue
     if ($null -eq $cmd) {
         [Console]::WriteLine('Codex CLI not found. Installation can continue; model compatibility NOT CHECKED.')
@@ -60,11 +61,11 @@ function Test-CodexCli {
     [Console]::WriteLine("Detected $versionText")
     if ($versionText -match '(\d+)\.(\d+)\.(\d+)') {
         $version = [version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
-        if ($version -lt [version]'0.153.0') {
-            [Console]::WriteLine('WARNING: GPT-6 Astra needs Codex CLI >= 0.153.0.')
+        if ($Plan -eq 'plus' -and $version -lt [version]'0.166.0') {
+            [Console]::WriteLine('WARNING: GPT-6.2 Sol and Astra require Codex CLI >= 0.166.0. Update before launching Plus.')
         }
-        if ($version -lt [version]'0.159.0') {
-            [Console]::WriteLine('WARNING: GPT-6.1 Terra visual-inspector needs Codex CLI >= 0.159.0. Update manually before using this profile.')
+        if ($Plan -eq 'pro' -and $version -lt [version]'0.153.0') {
+            [Console]::WriteLine('WARNING: GPT-6 Astra needs Codex CLI >= 0.153.0.')
         }
     } else {
         [Console]::WriteLine('WARNING: Could not parse Codex CLI version; compatibility NOT CHECKED.')
@@ -74,7 +75,7 @@ function Test-CodexCli {
 function Read-Plan {
     [Console]::WriteLine('Codex plan:')
     [Console]::WriteLine('  1) Pro  - GPT-6 Astra orchestrates, GPT-5.6 Luna executes, GPT-6 Astra reviews')
-    [Console]::WriteLine('  2) Plus - GPT-6.1 Sol (high reasoning) orchestrates, GPT-6 Luna executes, GPT-6 Astra reviews')
+    [Console]::WriteLine('  2) Plus - GPT-6.2 Sol (high reasoning) orchestrates, GPT-6 Luna executes, GPT-6.2 Astra reviews')
 
     while ($true) {
         [Console]::Write('Select plan [1/2] (default 1): ')
@@ -349,8 +350,8 @@ try {
         throw 'Target repository must be different from the setup source directory.'
     }
 
-    Test-CodexCli
     $plan = Read-Plan
+    Test-CodexCli -Plan $plan
     $profileDirectory = Join-Path $scriptDir "profiles/$plan"
 
     $installed = 0
