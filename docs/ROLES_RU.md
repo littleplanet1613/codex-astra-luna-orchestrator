@@ -15,7 +15,7 @@
 - разрешение противоречий между агентами;
 - финальную интеграцию и итоговый ответ.
 
-Для Plus root работает на GPT-6.1 Sol с `high` reasoning.
+Для Plus root работает на GPT-6.2 Sol с `high` reasoning.
 
 ## Explorer
 
@@ -82,7 +82,7 @@ Researcher должен опираться на первичные источн�
 
 **Задача:** независимая финальная проверка уже сделанных изменений.
 
-Для Plus reviewer работает на GPT-6 Astra с `medium` reasoning и в `read-only`.
+Для Plus reviewer работает на GPT-6.2 Astra с `medium` reasoning и в `read-only`.
 
 Ищет в первую очередь:
 

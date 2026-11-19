@@ -8,17 +8,17 @@ PLUS = ROOT / "profiles" / "plus" / "codex"
 
 ROLES = {
     "explorer": ("gpt-6-luna", "medium", "read-only"),
-    "researcher": ("gpt-6.1-sol", "medium", "read-only"),
+    "researcher": ("gpt-6.2-sol", "medium", "read-only"),
     "worker": ("gpt-6-luna", "medium", "workspace-write"),
     "tester": ("gpt-6-luna", "high", "workspace-write"),
-    "reviewer": ("gpt-6-astra", "medium", "read-only"),
+    "reviewer": ("gpt-6.2-astra", "medium", "read-only"),
     "visual-inspector": ("gpt-6.1-terra", "medium", "read-only"),
 }
 
 class PlusProfileTests(unittest.TestCase):
     def test_root_security_and_model(self):
         config = tomllib.loads((PLUS / "config.toml").read_text(encoding="utf-8"))
-        self.assertEqual(config["model"], "gpt-6.1-sol")
+        self.assertEqual(config["model"], "gpt-6.2-sol")
         self.assertEqual(config["model_reasoning_effort"], "high")
         self.assertEqual(config["approval_policy"], "on-request")
         self.assertEqual(config["sandbox_mode"], "workspace-write")
@@ -44,7 +44,7 @@ class PlusProfileTests(unittest.TestCase):
         script = (ROOT / "setup.ps1").read_text(encoding="utf-8")
         self.assertIn("Test-CodexCli", script)
         self.assertIn("0.153.0", script)
-        self.assertIn("0.159.0", script)
+        self.assertIn("0.166.0", script)
         self.assertIn("Backup: $backupPath", script)
         self.assertNotIn("if (Install-Component -Name $component -TargetDirectory $targetDirectory) {", script)
 
