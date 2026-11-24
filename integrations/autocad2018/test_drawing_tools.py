@@ -237,6 +237,27 @@ class DrawingTests(unittest.TestCase):
         doc.EndUndoMark.assert_called_once()
 
 
+    def test_batch_rejects_changed_insunits_before_creating_geometry(self):
+        self.backend.xyz = lambda values: tuple(values)
+        doc = SimpleNamespace(GetVariable=lambda _: 6)
+        with (patch.object(self.tools, "change", return_value=nullcontext(doc)),
+              patch.object(self.tools, "create_geometry") as create):
+            with self.assertRaisesRegex(ValueError, "INSUNITS changed"):
+                self.tools.add_geometry_batch(str(self.dwg), "SURVEY", "point",
+                                              [[[1, 2, 3]]], expected_insunits=4)
+            create.assert_not_called()
+
+    def test_unit_metadata_is_not_a_unit_conversion(self):
+        values = {"INSUNITS": 6, "MEASUREMENT": 1, "LUNITS": 2, "LUPREC": 3,
+                  "UCSNAME": "", "UCSORG": (0, 0, 0), "UCSXDIR": (1, 0, 0),
+                  "UCSYDIR": (0, 1, 0), "CTAB": "Model"}
+        doc = SimpleNamespace(GetVariable=values.__getitem__, SetVariable=Mock())
+        self.backend.document.return_value = doc
+        result = self.tools.drawing_units(str(self.dwg))
+        self.assertEqual(result["variables"]["INSUNITS"], 6)
+        self.assertFalse(result["geometry_units_confirmed"])
+        doc.SetVariable.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
