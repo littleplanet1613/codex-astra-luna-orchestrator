@@ -247,6 +247,11 @@ class DrawingTools:
             **self.identity(app),
             "path": doc.FullName, "name": doc.Name, "saved": bool(doc.Saved),
             "model_entities": doc.ModelSpace.Count, "space": doc.GetVariable("CTAB"),
+            "insunits": int(doc.GetVariable("INSUNITS")),
+            "ucs_name": str(doc.GetVariable("UCSNAME")),
+            "ucs_origin": list(doc.GetVariable("UCSORG")),
+            "ucs_x": list(doc.GetVariable("UCSXDIR")),
+            "ucs_y": list(doc.GetVariable("UCSYDIR")),
         }
 
     def activate_drawing(self, drawing_path: str) -> dict:
