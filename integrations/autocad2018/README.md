@@ -76,3 +76,39 @@ was successfully exercised. Geometry copy, deletion and the DWG round trip
 use synthetic working drawings. Saved artifacts include a separately saved DWG
 copy and a PDF. The runner compares source and donor hashes after the test.
 A successful live run still requires PDF rendering and visual inspection.
+
+## Low-context and desktop setup
+
+Use `drawing_units` before editing; INSUNITS is insertion metadata, not proof
+of survey coordinate units. Confirm the physical unit against a known length
+and distinguish UCS from WCS. Use filtered `model_entities` and exact handles
+instead of whole-drawing inventories. `add_geometry_batch` creates up to 200
+same-kind objects per call on a managed DWG, checking observed INSUNITS.
+A failed batch may be partial; inspect or undo before retrying. It is not an
+arbitrary LISP runner. Keep one agent for simple edits.
+
+The separate `upstream-benchmark.toml.example` pins autocad-mcp-pro 1.8.0.
+It is disabled intentionally: CAD_LAUNCH=never and ALLOWED_PATHS alone cannot
+prove standalone AutoCAD identity or protect the active original document.
+First measure tools/list in an isolated process without CAD operations, then
+adapt and audit attachment and managed-copy checks on all call paths before
+allowing live COM. Never enable both servers in the same working session.
+Compare full, lean and discovery catalogs separately from actual task token
+usage. Compare the same geometry, object count, DWG/PDF, calls and elapsed
+time with sequential vs batch operations. Record token counters only where
+the client exposes them; bytes are not tokens.
+
+For a private Desktop plugin use `prepare_desktop_plugin.py` with the existing
+local Codex config and explicit approved release, then register the generated
+marketplace with `codex plugin marketplace add <absolute-marketplace-root>`.
+It starts in preflight-only mode. Local absolute paths and Python environment
+must be validated on the Windows host. No auto-enable or public upload.
+Restart ChatGPT Desktop, install from the local marketplace, and test
+diagnose_autocad. Verify Chat, Work and Codex separately; ordinary Chat local
+MCP availability and separate quota accounting are not assumed. Disable the
+duplicate direct server in a plugin-only test session. Do not alter the
+working configuration until the new one passes acceptance.
+
+References: https://developers.openai.com/plugins/build/plugins ;
+https://learn.chatgpt.com/docs/extend/mcp ;
+https://pypi.org/project/autocad-mcp-pro/1.8.0/
