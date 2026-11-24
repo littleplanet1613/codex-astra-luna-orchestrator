@@ -29,7 +29,7 @@ try {
     foreach ($file in @($config, $visual, $skill, $instructions)) {
         if (-not (Test-Path -LiteralPath $file)) { throw "Missing installed file: $file" }
     }
-    if (-not ((Get-Content $config -Raw).Contains('gpt-6.1-sol'))) { throw 'Wrong Plus profile installed' }
+    if (-not ((Get-Content $config -Raw).Contains('gpt-6.2-sol'))) { throw 'Wrong Plus profile installed' }
     if (-not ((Get-Content $visual -Raw).Contains('gpt-6.1-terra'))) { throw 'visual-inspector model not installed' }
 
     # Re-run and refuse every existing component; existing content must stay intact.

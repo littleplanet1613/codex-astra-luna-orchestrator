@@ -1,22 +1,6 @@
-# Codex Plus: Sol orchestrator, Luna execution, Sol research, Astra review, Terra visual QA
-#
-# Variant of config.toml for Codex Plus users. The root runs GPT-6.1 Sol
-# at high reasoning; normal execution subagents use GPT-6 Luna. The reviewer role in
-# agents/reviewer.toml is still pinned to Astra for an independent review.
-#
-# The installer writes this file as <repo>/.codex/config.toml when you
-# select the Plus plan. For a personal/global setup, merge these settings
-# into ~/.codex/config.toml instead.
-#
-# Main knobs to change:
-#   model / model_reasoning_effort
-#   agents.default_subagent_model
-#   agents.default_subagent_reasoning_effort
-#   agents.max_concurrent_threads_per_session
-
 # Root / orchestrator
-model = "gpt-6.1-sol"
-model_reasoning_effort = "high"
+model = "gpt-6.2-sol"
+model_reasoning_effort = "medium"
 
 # Safe interactive defaults. Change if your workflow needs otherwise.
 approval_policy = "on-request"
@@ -27,10 +11,11 @@ enabled = true
 
 # Number of child agent threads Codex may keep open concurrently.
 # Keep this low on Plus: every concurrent subagent re-reads its own context.
-max_concurrent_threads_per_session = 4
+max_concurrent_threads_per_session = 2
+max_depth = 1
 
 # Default for any spawned subagent that does not explicitly choose a model.
-default_subagent_model = "gpt-6-luna"
+default_subagent_model = "gpt-6.2-sol"
 default_subagent_reasoning_effort = "medium"
 
 [agents."explorer"]

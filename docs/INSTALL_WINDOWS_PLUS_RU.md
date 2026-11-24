@@ -1,5 +1,3 @@
-> Обновление Plus от 09.11.2026: Sol 6.1 — основной агент, Luna 6 — исполнитель, Astra 6 — проверка, Terra 6.1 — визуальная проверка. Установщик проверяет версию Codex CLI (для Astra нужна >= 0.153.0, для Terra — >= 0.159.0) и сохраняет резервные копии перед подтверждённой заменой файлов. Существующие глобальные MCP-настройки не переписываются.
-
 # Установка на Windows для ChatGPT Plus
 
 Эта инструкция рассчитана на профиль **Plus**.
@@ -8,12 +6,12 @@
 
 Codex будет использовать:
 
-- GPT-6.1 Sol `high` как главный root/orchestrator;
-- GPT-6 Luna `medium` для explorer и worker, `high` для tester;
-- GPT-6.1 Sol `medium` для researcher;
-- GPT-6 Astra `medium` как независимый reviewer;
+- GPT-6.2 Sol `medium` как основной агент;
+- GPT-6.2 Sol `low` для explorer и `medium` для worker и tester;
+- GPT-6.2 Sol `medium` для researcher;
+- GPT-6.2 Astra `medium` как независимый reviewer;
 - GPT-6.1 Terra `medium` как read-only visual-inspector;
-- до 4 concurrent subagents по умолчанию.
+- до двух помощников одновременно и один уровень делегирования.
 
 ## Вариант 1 — установка в конкретный проект
 
@@ -27,7 +25,7 @@ cd codex-astra-luna-orchestrator
 2. Запустите Windows-установщик:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\setup.ps1
+powershell -File .\setup.ps1
 ```
 
 Если используется PowerShell 7:
@@ -47,7 +45,7 @@ pwsh -File .\setup.ps1
 5. По умолчанию установщик предложит три части:
 
 - `.codex` — конфигурация Codex и роли агентов;
-- `.agents` — skill `astra-orchestrator`;
+- `.agents` — `astra-orchestrator` и шесть геодезических навыков;
 - `AGENTS.md` — инструкции по оркестрации для проекта.
 
 6. Если какой-то файл уже существует, внимательно смотрите список файлов, которые будут заменены. Существующие настройки MCP, providers, permissions и другие ручные настройки нельзя перетирать вслепую.

@@ -1,10 +1,10 @@
-> **Plus profile update (2026-11-09):** the Plus root uses `gpt-6.1-sol` (high); researcher uses Sol (medium), explorer/worker Luna (medium), tester Luna (high), reviewer Astra (medium), and new read-only visual-inspector Terra (medium). The Pro root and existing Pro role pins are unchanged. Codex CLI >= 0.153.0 is required for Astra and >= 0.159.0 for Terra; actual model access varies by account. The Windows installer now checks the CLI version, repairs a duplicate installation loop, and backs up existing components before approved overwrite. This repository never installs automatically from GitHub. See `docs/PLUS_2026_11_UPGRADE.md` for validation and rollback.
-
 # Codex Astra Orchestrator + Luna Subagents
 
-A configurable multi-agent Codex setup. Plus: GPT-6.1 Sol coordinates, GPT-6 Luna executes, GPT-6.1 Sol researches, GPT-6 Astra reviews, and GPT-6.1 Terra checks visual artifacts. Pro keeps its existing Astra-root/Luna-execution profile.
+A configurable multi-agent Codex setup. Plus uses GPT-6.2 Sol for routine work, GPT-6.2 Astra for review and GPT-6.1 Terra for visual inspection. Pro keeps its existing Astra-root/Luna-execution profile.
 
 The installer asks which Codex plan you are on. Pro remains on GPT-6 Astra medium for the root, GPT-5.6 Luna max for execution, and Astra low for review. Plus uses the updated six-agent model matrix below.
+
+See the [Plus guide](guides/plus-plan.md) and [AutoCAD 2018 guard](integrations/autocad2018/README.md) for setup requirements.
 
 ## Layout
 
@@ -36,11 +36,10 @@ The installer asks which Codex plan you are on. Pro remains on GPT-6 Astra mediu
 
 | Role or setting | Plus | Pro |
 |---|---|---|
-| Orchestrator | GPT-6.1 Sol — high | GPT-6 Astra — medium |
-| Explorer/worker Luna 6 medium; tester Luna 6 high; researcher Sol 6.1 medium | GPT-5.6 Luna — max |
-| Default subagent | GPT-6 Luna — medium | GPT-5.6 Luna — max |
-| Independent reviewer | GPT-6 Astra — medium | GPT-6 Astra — low |
-| Concurrent subagent limit | 4 | 4 |
+| Orchestrator | GPT-6.2 Sol — medium | GPT-6 Astra — medium |
+| Default subagent | GPT-6.2 Sol — medium | GPT-5.6 Luna — max |
+| Independent reviewer | GPT-6.2 Astra — medium | GPT-6 Astra — low |
+| Concurrent subagent limit | 2 | 4 |
 
 ### Pro — `profiles/pro/codex/config.toml`
 
@@ -61,16 +60,17 @@ default_subagent_reasoning_effort = "max"
 ### Plus — `profiles/plus/codex/config.toml`
 
 ```toml
-model = "gpt-6.1-sol"
-model_reasoning_effort = "high"
+model = "gpt-6.2-sol"
+model_reasoning_effort = "medium"
 
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
 
 [agents]
 enabled = true
-max_concurrent_threads_per_session = 4
-default_subagent_model = "gpt-6-luna"
+max_concurrent_threads_per_session = 2
+max_depth = 1
+default_subagent_model = "gpt-6.2-sol"
 default_subagent_reasoning_effort = "medium"
 ```
 
@@ -80,7 +80,7 @@ is ready to copy, with no configuration rewriting during setup.
 
 Each Plus role is explicitly registered using `[agents."name"]` and a relative `config_file` path. Named-role model pins live in `profiles/plus/codex/agents/*.toml`; changing only `default_subagent_model` affects generic spawned agents, not these named roles.
 
-Pro's four Luna role files remain at `max`, with Astra reviewer at `low`. Plus uses Luna medium for explorer/worker, Luna high for tester, Sol medium for researcher, Astra medium for reviewer and Terra medium for visual-inspector.
+
 
 When updating an existing installation, copy the role files along with `config.toml` from the selected profile. Replace `<plan>` below with `pro` or `plus`.
 
@@ -111,7 +111,7 @@ Run the shell installer:
 Run the PowerShell installer from Windows PowerShell:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\setup.ps1
+powershell -File .\setup.ps1
 ```
 
 With PowerShell 7, you can use:
@@ -134,7 +134,7 @@ Next, choose your Codex plan:
 ```text
 Codex plan:
   1) Pro  - GPT-6 Astra orchestrates, GPT-5.6 Luna executes, GPT-6 Astra reviews
-  2) Plus - GPT-5.6 Luna (max reasoning) orchestrates, GPT-5.6 Luna executes, GPT-6 Astra reviews
+  2) Plus - GPT-6.2 Sol handles routine work, GPT-6.2 Astra reviews, GPT-6.1 Terra inspects visuals
 Select plan [1/2] (default 1):
 ```
 
@@ -221,7 +221,7 @@ and reviewer for an independent final review.
 ## Suggested topology
 
 ```text
-                 GPT-6.1 Sol
+                 GPT-6.2 Sol
              root / orchestrator
                       |
       +---------------+---------------+
@@ -276,21 +276,20 @@ scripts/token_usage.py --latest --date 2026-09-07
 See [`guides/token-usage.md`](guides/token-usage.md) for a measurement
 protocol, one sample run with real numbers, and tips for reducing usage.
 
-Plus users: the root thread is the largest line item, so running it on Luna
-saves the most. Selecting `Plus` in the installer does this for you; for a
-manual or global setup see [`guides/plus-plan.md`](guides/plus-plan.md):
+The Plus installer selects GPT-6.2 Sol with medium reasoning for the root.
+For a manual or global setup see [the Plus guide](guides/plus-plan.md).
 
 ```toml
 # Root
-model = "gpt-6.1-sol"
-model_reasoning_effort = "high"
+model = "gpt-6.2-sol"
+model_reasoning_effort = "medium"
 ```
 
 ## Important behavior
 
 Explicit model choices during a spawn override `[agents]` defaults. Custom agent files that specify `model` or `model_reasoning_effort` also take precedence over inherited defaults.
 
-The execution role files are pinned to Luna intentionally, while the reviewer is pinned to Astra for independent final review. The Plus root is Sol; the Pro root remains Astra. The root role is selected by the installed profile.
+Plus uses Sol for execution and Pro uses Luna. Both profiles include an Astra reviewer.
 
 ## License
 

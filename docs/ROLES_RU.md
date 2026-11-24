@@ -15,7 +15,7 @@
 - разрешение противоречий между агентами;
 - финальную интеграцию и итоговый ответ.
 
-Для Plus root работает на GPT-6.1 Sol с `high` reasoning.
+Для Plus root работает на GPT-6.2 Sol с `high` reasoning.
 
 ## Explorer
 

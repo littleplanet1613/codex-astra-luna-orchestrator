@@ -58,6 +58,7 @@ function Test-CodexCli {
     }
     $versionText = (& codex --version 2>&1 | Out-String).Trim()
     [Console]::WriteLine("Detected $versionText")
+    [Console]::WriteLine('Model access depends on your signed-in Codex account. Check the model picker for the Plus profile: GPT-6.2 Sol, GPT-6.2 Astra and GPT-6.1 Terra.')
     if ($versionText -match '(\d+)\.(\d+)\.(\d+)') {
         $version = [version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
         if ($version -lt [version]'0.153.0') {
@@ -74,7 +75,7 @@ function Test-CodexCli {
 function Read-Plan {
     [Console]::WriteLine('Codex plan:')
     [Console]::WriteLine('  1) Pro  - GPT-6 Astra orchestrates, GPT-5.6 Luna executes, GPT-6 Astra reviews')
-    [Console]::WriteLine('  2) Plus - GPT-6.1 Sol (high reasoning) orchestrates, GPT-6 Luna executes, GPT-6 Astra reviews')
+    [Console]::WriteLine('  2) Plus - GPT-6.2 Sol handles routine work, GPT-6.2 Astra reviews, GPT-6.1 Terra inspects visuals')
 
     while ($true) {
         [Console]::Write('Select plan [1/2] (default 1): ')
