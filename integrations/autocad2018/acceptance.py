@@ -76,6 +76,17 @@ async def run(config, workspace, attach_verified_existing):
                 "add_geometry", drawing_path=str(donor), layer="SURVEY_TEST", kind="polyline",
                 points=donor_vertices, closed=True,
             )
+            units = await checked("drawing_units", drawing_path=str(donor))
+            observed_units = int(units["variables"]["INSUNITS"])
+            batch = await checked("add_geometry_batch", drawing_path=str(donor),
+                                  layer="SURVEY_TEST", kind="point",
+                                  items=[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]]],
+                                  expected_insunits=observed_units)
+            assert batch["created"] == batch["entity_count_delta"] == 3
+            assert len(set(batch["handles"])) == 3
+            for handle, expected in zip(batch["handles"], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]):
+                point = (await checked("inspect_entity", handle=handle))["entity"]
+                assert point["Coordinates"] == expected
             await checked("save_drawing", drawing_path=str(donor))
             donor_hash = digest(donor)
             await checked("open_working_copy", source_path=str(source), output_path=str(target))
