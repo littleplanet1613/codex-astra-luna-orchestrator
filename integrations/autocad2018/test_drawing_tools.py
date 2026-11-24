@@ -22,7 +22,7 @@ class DrawingTests(unittest.TestCase):
         self.dwg.write_bytes(b"work placeholder")
         self.enterContext(patch.dict(os.environ, {"AUTOCAD2018_WORKSPACE": str(self.work)}))
         self.backend = SimpleNamespace(document=Mock(), undo=Mock(return_value=nullcontext()))
-        self.tools = DrawingTools(self.backend)
+        self.tools = DrawingTools(self.backend, "Autodesk AutoCAD 2021")
         self.tools.record_managed(self.dwg)
 
     def test_excludes_original_and_aliases_before_com(self):
@@ -72,7 +72,8 @@ class DrawingTests(unittest.TestCase):
         copy = self.work / "copy.dwg"
         opener = Mock(return_value=SimpleNamespace(FullName=str(copy), Saved=True))
         app = SimpleNamespace(Documents=SimpleNamespace(Open=opener))
-        with patch.object(self.tools, "app_for_document_switch", return_value=app):
+        with (patch.object(self.tools, "app_for_document_switch", return_value=app),
+              patch.object(self.tools, "ready_document", side_effect=lambda _, doc: doc)):
             answer = self.tools.open_working_copy(str(self.original), str(copy))
             self.assertEqual(answer["path"], str(copy))
             self.assertEqual(copy.read_bytes(), b"original placeholder")
@@ -110,8 +111,11 @@ class DrawingTests(unittest.TestCase):
         old = SimpleNamespace(Name="Model")
         plot = SimpleNamespace(QuietErrorMode=False)
         variables = {"BACKGROUNDPLOT": 3}
+        def set_variable(name, value):
+            self.assertEqual(value.varianttype, 2)
+            variables[name] = value.value
         doc = SimpleNamespace(ActiveLayout=old, Layouts=[sheet], Plot=plot, GetVariable=variables.__getitem__,
-                              SetVariable=variables.__setitem__)
+                              SetVariable=set_variable)
         self.backend.document.return_value = doc
         return doc, old, plot
 
@@ -147,6 +151,30 @@ class DrawingTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             self.tools.export_sheet_pdf(str(self.dwg), "Plan", str(pdf))
         plot.PlotToFile.assert_called_once()
+
+    def test_sheet_rotation_uses_the_device_native_orientation(self):
+        for dimensions, expected in (((297, 210), 0), ((210, 297), 1)):
+            with self.subTest(dimensions=dimensions):
+                sheet = SimpleNamespace(
+                    Name="Plan", ModelType=False, RefreshPlotDeviceInfo=Mock(),
+                    GetPlotDeviceNames=lambda: ["DWG To PDF.pc3"],
+                    GetCanonicalMediaNames=lambda: ["A4"],
+                    GetPaperSize=lambda: dimensions, SetCustomScale=Mock(), ConfigName="",
+                    CanonicalMediaName="",
+                )
+                doc = SimpleNamespace(ActiveLayout=sheet, Layouts=[sheet])
+                with patch.object(self.tools, "change", return_value=nullcontext(doc)):
+                    answer = self.tools.configure_sheet(str(self.dwg), "Plan", "DWG To PDF.pc3",
+                                                        media="A4", landscape=True)
+                self.assertEqual(answer["native_paper_mm"], list(dimensions))
+                self.assertEqual(sheet.PlotRotation, expected)
+
+    def test_leader_edits_validate_type_and_size_before_com(self):
+        with self.assertRaisesRegex(ValueError, "require a multileader"):
+            self.tools.edit_entity(str(self.dwg), "AA", "AcDbLine", leader_arrow_size=2.5)
+        with self.assertRaisesRegex(ValueError, "positive and finite"):
+            self.tools.edit_entity(str(self.dwg), "AA", "AcDbMLeader", leader_landing_gap=0)
+        self.backend.document.assert_not_called()
 
 
 if __name__ == "__main__":

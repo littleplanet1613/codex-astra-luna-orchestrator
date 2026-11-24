@@ -4,7 +4,7 @@ A configurable multi-agent Codex setup. Plus uses GPT-6.2 Sol for routine work, 
 
 The installer asks which Codex plan you are on. Pro remains on GPT-6 Astra medium for the root, GPT-5.6 Luna max for execution, and Astra low for review. Plus uses the updated six-agent model matrix below.
 
-See the [Plus guide](guides/plus-plan.md) and [AutoCAD 2018 guard](integrations/autocad2018/README.md) for setup requirements.
+See the [Plus guide](guides/plus-plan.md) and [standalone AutoCAD guard](integrations/autocad2018/README.md) for setup requirements.
 
 ## Layout
 

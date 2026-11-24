@@ -12,11 +12,30 @@ PLAIN = dict(pid=101, session=1, hwnd=1001, path=EXE, version="R22.0.107.0.0",
              title="Autodesk AutoCAD 2018 - [test.dwg]", responding=True, civil=False,
              modules_verified=True)
 NEWER = dict(pid=202, path=r"C:\Program Files\Autodesk\AutoCAD 2021\acad.exe", version="R24.0")
+R22 = guard.RELEASES["2018"]
+R24 = guard.RELEASES["2021"]
 
 
 class GuardTests(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch.dict(os.environ, {"AUTOCAD_RELEASE": "2018"}))
+
     def check(self, *rows):
-        return guard.verified_process(rows, EXE)
+        return guard.verified_process(rows, EXE, R22)
+
+    def test_2021_is_default_and_exact_24_0_is_required(self):
+        with patch.dict(os.environ, clear=True):
+            self.assertEqual(guard.configured_release(), R24)
+        executable = NEWER["path"]
+        row = {**PLAIN, **NEWER, "title": "Autodesk AutoCAD 2021 - [test.dwg]",
+               "command": f'"{executable}"'}
+        self.assertEqual(guard.verified_process([row], executable, R24)[0]["pid"], NEWER["pid"])
+        with self.assertRaisesRegex(RuntimeError, "R24.0"):
+            guard.verified_process([{**row, "version": "R24.1.0"}], executable, R24)
+        with self.assertRaisesRegex(RuntimeError, "Civil 3D"):
+            guard.verified_process([{**row, "civil": True}], executable, R24)
+        with self.assertRaisesRegex(RuntimeError, "exactly one R24"):
+            guard.verified_process([row, {**row, "pid": 999, "civil": True}], executable, R24)
 
     def test_explicit_and_default_shortcuts(self):
         for tail in ('/product ACAD /language "ru-RU" /p "Plan profile"',
@@ -79,8 +98,10 @@ class GuardTests(unittest.TestCase):
             com.assert_not_called()
 
     def test_com_owner_and_profile_must_match(self):
-        app = SimpleNamespace(HWND=PLAIN["hwnd"], Version="22.0s", FullName=EXE,
-                              Preferences=SimpleNamespace(Profiles=SimpleNamespace(ActiveProfile="Plain")))
+        document = SimpleNamespace(GetVariable=lambda _: document.profile, profile="Plain")
+        app = SimpleNamespace(HWND=PLAIN["hwnd"], Version="22.0s", FullName=EXE, ActiveDocument=document,
+                              Documents=SimpleNamespace(Count=1),
+                              GetAcadState=lambda: SimpleNamespace(IsQuiescent=True))
         with (patch.object(guard, "preflight", return_value=(PLAIN, None, {"plain"}, {})),
               patch.dict(os.environ, {"AUTOCAD2018_ATTACH": "verified-exclusive"}),
               patch.object(guard.win32com.client, "GetActiveObject", return_value=app) as com,
@@ -89,19 +110,19 @@ class GuardTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "COM window"):
                 guard.verified_application()
             owner.return_value = (1, PLAIN["pid"])
-            app.Preferences.Profiles.ActiveProfile = "C3D"
+            document.profile = "C3D"
             with self.assertRaisesRegex(RuntimeError, "profile"):
                 guard.verified_application()
-            app.Preferences.Profiles.ActiveProfile = "Plain"
+            document.profile = "Plain"
             self.assertIs(guard.verified_application(), app)
-            com.assert_called_with(guard.PROGID)
+            com.assert_called_with(R22.progid)
 
     def test_progid_registration_path_is_checked(self):
         with patch.object(guard, "registry_value", side_effect=["{example}", f"{EXE} /Automation"]):
-            self.assertEqual(guard.com_registration(EXE)["local_server"], EXE)
+            self.assertEqual(guard.com_registration(EXE, R22)["local_server"], EXE)
         with patch.object(guard, "registry_value", side_effect=["{example}", 'D:\\acad.exe /Automation']):
             with self.assertRaisesRegex(RuntimeError, "LocalServer32"):
-                guard.com_registration(EXE)
+                guard.com_registration(EXE, R22)
 
 
 if __name__ == "__main__":

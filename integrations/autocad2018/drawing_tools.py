@@ -1,4 +1,4 @@
-"""Path-scoped drafting tools for the existing AutoCAD 2018 MCP."""
+"""Path-scoped drafting tools for standalone AutoCAD."""
 from contextlib import contextmanager
 import hashlib
 import json
@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
+import time
 from typing import Literal
 
 import pythoncom
@@ -71,11 +72,25 @@ def array(values):
     return win32com.client.VARIANT(pythoncom.VT_ARRAY | pythoncom.VT_R8, list(values))
 
 
+def set_short_variable(doc, name, value):
+    # AutoCAD's integer system variables require the original 16-bit Variant type.
+    doc.SetVariable(name, win32com.client.VARIANT(pythoncom.VT_I2, int(value)))
+
+
 def pdf_device(layout, name):
     candidates = {item.casefold(): item for item in layout.GetPlotDeviceNames()}
     if name.casefold() not in PDF_DEVICES or name.casefold() not in candidates:
         raise ValueError("Select an installed AutoCAD PDF PC3 device.")
     return candidates[name.casefold()]
+
+
+def active_profile(app):
+    try:
+        return str(app.Preferences.Profiles.ActiveProfile)
+    except (pythoncom.com_error, AttributeError):
+        if app.Documents.Count:
+            return str(app.ActiveDocument.GetVariable("CPROFILE"))
+        raise RuntimeError("The active AutoCAD profile could not be read on the Start tab.") from None
 
 
 def add_mleader(space, points):
@@ -89,8 +104,9 @@ def add_mleader(space, points):
 
 
 class DrawingTools:
-    def __init__(self, backend):
+    def __init__(self, backend, product):
         self.backend = backend
+        self.product = product
         self.raw_document = backend.document
 
     def register(self):
@@ -167,22 +183,54 @@ class DrawingTools:
     @contextmanager
     def change(self, drawing_path):
         doc = self.document(drawing_path, True)
-        with self.backend.undo(doc, drawing_path):
+        doc.StartUndoMark()
+        try:
             yield doc
+        finally:
+            doc.EndUndoMark()
 
     def app_for_document_switch(self):
         app = self.backend.app()
-        if not app.GetAcadState().IsQuiescent:
-            raise RuntimeError("AutoCAD has an active operation. No DWG was opened or closed.")
+        self.ready_documents(app)
         return app
 
     @staticmethod
-    def identity(app):
+    def ready_documents(app):
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            try:
+                if app.GetAcadState().IsQuiescent:
+                    documents = app.Documents
+                    documents.Count
+                    return documents
+            except (pythoncom.com_error, AttributeError):
+                pass
+            pythoncom.PumpWaitingMessages()
+            time.sleep(0.25)
+        raise RuntimeError("AutoCAD did not become ready for a document switch.")
+
+    def ready_document(self, app, doc):
+        # Opening or creating a DWG can queue startup routines after the call returns.
+        # Wait and rebind this same document, without issuing another Open or Add.
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            try:
+                if app.GetAcadState().IsQuiescent:
+                    candidate = win32com.client.Dispatch(doc._oleobj_)
+                    if candidate.GetVariable("CMDACTIVE") == 0:
+                        return candidate
+            except (pythoncom.com_error, AttributeError):
+                pass
+            pythoncom.PumpWaitingMessages()
+            time.sleep(0.25)
+        raise RuntimeError("The new or opened drawing is waiting for an AutoCAD startup operation. Inspect it before retrying.")
+
+    def identity(self, app):
         hwnd = app.HWND
         return {
-            "version": str(app.Version), "product": "Autodesk AutoCAD 2018",
+            "version": str(app.Version), "product": self.product,
             "pid": win32process.GetWindowThreadProcessId(hwnd)[1], "hwnd": hwnd,
-            "profile": str(app.Preferences.Profiles.ActiveProfile), "documents": app.Documents.Count,
+            "profile": active_profile(app), "documents": app.Documents.Count,
         }
 
     def autocad_identity(self) -> dict:
@@ -216,7 +264,9 @@ class DrawingTools:
         """Create a blank drawing under the working directory, using the default AutoCAD template."""
         path = self.working_path(output_path, new=True)
         app = self.app_for_document_switch()
-        doc = app.Documents.Add()
+        doc = self.ready_document(app, app.Documents.Add())
+        if doc.FullName:
+            raise RuntimeError("AutoCAD did not return a new, unsaved drawing.")
         promoted = self.stage_save_and_reopen(app, doc, path)
         return {"path": str(path), "saved": bool(promoted.Saved)}
 
@@ -230,7 +280,8 @@ class DrawingTools:
         doc.Close(False)
         staged.rename(target)  # No replacement on Windows, even if another writer won the race.
         self.record_managed(target)
-        return app.Documents.Open(str(target), False)
+        documents = self.ready_documents(app)
+        return self.ready_document(app, documents.Open(str(target), False))
 
     def save_copy(self, drawing_path: str, output_path: str) -> dict:
         """Save an active working DWG under a new working path, including its in-memory edits."""
@@ -266,7 +317,7 @@ class DrawingTools:
                     raise RuntimeError("The source changed while being copied.")
             staged.rename(target)
         self.record_managed(target)
-        doc = app.Documents.Open(str(target), False)
+        doc = self.ready_document(app, app.Documents.Open(str(target), False))
         return {"path": doc.FullName, "source_on_disk": str(source), "saved": bool(doc.Saved)}
 
     def open_working_dwg(self, drawing_path: str) -> dict:
@@ -277,7 +328,7 @@ class DrawingTools:
             if doc.Path and self.backend.norm(doc.FullName) == self.backend.norm(str(path)):
                 doc.Activate()
                 return {"path": str(path), "already_open": True}
-        doc = app.Documents.Open(str(path), False)
+        doc = self.ready_document(app, app.Documents.Open(str(path), False))
         return {"path": doc.FullName, "already_open": False}
 
     def close_working_dwg(self, drawing_path: str) -> dict:
@@ -410,13 +461,21 @@ class DrawingTools:
         layer: str | None = None, displacement_wcs: list[float] | None = None,
         text: str | None = None, radius: float | None = None, style: str | None = None,
         line_endpoints_wcs: list[list[float]] | None = None,
+        leader_arrow_size: float | None = None, leader_landing_gap: float | None = None,
     ) -> dict:
         """Move or update an exact handle on a work copy, preserving unsupplied properties."""
         if expected_type not in EDIT_TYPES:
             raise ValueError("Unsupported exact AutoCAD entity type.")
         displacement = None if displacement_wcs is None else self.backend.xyz(displacement_wcs)
-        if all(value is None for value in (layer, displacement, text, radius, style, line_endpoints_wcs)):
+        if all(value is None for value in (layer, displacement, text, radius, style, line_endpoints_wcs,
+                                            leader_arrow_size, leader_landing_gap)):
             raise ValueError("Provide at least one edit.")
+        for value, label in ((leader_arrow_size, "Multileader arrow size"),
+                             (leader_landing_gap, "Multileader landing gap")):
+            if value is not None:
+                if expected_type != "AcDbMLeader":
+                    raise ValueError("Arrow and landing settings require a multileader.")
+                positive(value, label)
         endpoints = None
         if line_endpoints_wcs is not None:
             if expected_type != "AcDbLine" or len(line_endpoints_wcs) != 2 or displacement is not None:
@@ -458,6 +517,12 @@ class DrawingTools:
                 entity.Radius = radius
             if style_name is not None:
                 entity.StyleName = style_name
+            if leader_arrow_size is not None:
+                entity.ArrowheadType = 0
+                entity.ArrowheadSize = leader_arrow_size
+            if leader_landing_gap is not None:
+                entity.DogLegged = True
+                entity.LandingGap = leader_landing_gap
             entity.Update()
             return {"before": before, "after": self.record(doc, entity)}
 
@@ -653,19 +718,24 @@ class DrawingTools:
             layout.PlotType = PLOT_LAYOUT
             layout.UseStandardScale = False
             layout.SetCustomScale(1, 1)
-            layout.PlotRotation = 1 if landscape else 0
+            layout.PlotRotation = 0
+            width, height = layout.GetPaperSize()
+            # Canonical device media can already be landscape.
+            if (width > height) != landscape and width != height:
+                layout.PlotRotation = 1
             if created:
                 create_viewport = doc.GetVariable("LAYOUTCREATEVIEWPORT")
                 try:
-                    doc.SetVariable("LAYOUTCREATEVIEWPORT", 0)
+                    set_short_variable(doc, "LAYOUTCREATEVIEWPORT", 0)
                     doc.ActiveLayout = layout
                 finally:
                     try:
                         doc.ActiveLayout = old
                     finally:
-                        doc.SetVariable("LAYOUTCREATEVIEWPORT", create_viewport)
+                        set_short_variable(doc, "LAYOUTCREATEVIEWPORT", create_viewport)
             return {"name": layout.Name, "created": created, "device": layout.ConfigName,
-                    "media": layout.CanonicalMediaName, "available_media": available}
+                    "media": layout.CanonicalMediaName, "available_media": available,
+                    "native_paper_mm": [width, height], "rotation": layout.PlotRotation}
 
     def set_plan_viewport(
         self, drawing_path: str, layout: str, center_paper: list[float], width: float, height: float,
@@ -726,7 +796,7 @@ class DrawingTools:
             temporary = Path(directory) / "sheet.pdf"
             try:
                 doc.ActiveLayout = sheet
-                doc.SetVariable("BACKGROUNDPLOT", 0)
+                set_short_variable(doc, "BACKGROUNDPLOT", 0)
                 doc.Plot.QuietErrorMode = True
                 if not doc.Plot.PlotToFile(str(temporary), device) or not temporary.is_file():
                     raise RuntimeError("AutoCAD did not report a successful PDF export.")
@@ -740,7 +810,7 @@ class DrawingTools:
                     doc.Plot.QuietErrorMode = previous_quiet
                 finally:
                     try:
-                        doc.SetVariable("BACKGROUNDPLOT", previous_plot)
+                        set_short_variable(doc, "BACKGROUNDPLOT", previous_plot)
                     finally:
                         doc.ActiveLayout = previous
         return {"path": str(target), "layout": layout, "bytes": target.stat().st_size}

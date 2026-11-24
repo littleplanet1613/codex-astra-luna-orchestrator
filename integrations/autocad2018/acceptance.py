@@ -39,9 +39,10 @@ async def run(config, workspace, attach_verified_existing):
             registered_tools = {tool.name for tool in (await session.list_tools()).tools}
             covered = set()
 
-            async def checked(name, **kwargs):
-                response = await call(session, name, **kwargs)
-                covered.add(name)
+            async def checked(tool_name, **kwargs):
+                print(f"Checking {tool_name}", flush=True)
+                response = await call(session, tool_name, **kwargs)
+                covered.add(tool_name)
                 return response
 
             diagnostic = await checked("diagnose_autocad")
@@ -79,8 +80,8 @@ async def run(config, workspace, attach_verified_existing):
             donor_hash = digest(donor)
             await checked("open_working_copy", source_path=str(source), output_path=str(target))
 
-            async def tool(name, **kwargs):
-                return await checked(name, drawing_path=str(target), **kwargs)
+            async def tool(tool_name, **kwargs):
+                return await checked(tool_name, drawing_path=str(target), **kwargs)
 
             current = await checked("active_drawing")
             assert Path(current["path"]) == target and current["pid"] == active["pid"]
@@ -127,13 +128,15 @@ async def run(config, workspace, attach_verified_existing):
             lines = await checked("model_entities", layer="SURVEY_TEST", object_type="AcDbLine", limit=1)
             assert lines["total"] == 2 and len(lines["entities"]) == 1
             for kind, points, text in (
-                ("text", [[12, 105, 0]], "AUTO CAD 2018 ACCEPTANCE"),
+                ("text", [[12, 105, 0]], f"CAD {diagnostic['target_release']} ACCEPTANCE"),
                 ("mtext", [[72, 98, 0]], "Reference point P01"),
                 ("aligned_dimension", [[10, 15, 0], [105, 15, 0], [55, 5, 0]], ""),
                 ("multileader", [[55, 85, 0], [73, 88, 0]], "P01 / ELEV +0.000"),
             ):
                 objects[kind] = await tool("add_annotation", kind=kind, layer="SURVEY_TEST",
                                            points=points, text=text)
+            await tool("edit_entity", handle=objects["multileader"]["handle"], expected_type="AcDbMLeader",
+                       leader_arrow_size=2.5, leader_landing_gap=4)
             await tool("define_marker_block", name="SURVEY_MARK", radius=2, attribute_tag="ID",
                        default_value="OLD")
             block_definition = await tool("define_block_from_entities", name="SURVEY_DETAIL",
