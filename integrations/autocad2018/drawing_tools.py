@@ -33,7 +33,7 @@ EDIT_TYPES = GEOMETRY_TYPES | TEXT_TYPES | {"AcDbBlockReference", "AcDbAlignedDi
 TOOLS = (
     "autocad_identity", "active_drawing", "activate_drawing", "save_copy", "save_drawing",
     "new_working_dwg", "open_working_copy", "open_working_dwg",
-    "close_working_dwg", "list_layouts", "upsert_layer", "add_geometry", "edit_entity",
+    "close_working_dwg", "list_layouts", "upsert_layer", "add_geometry", "add_geometry_batch", "edit_entity",
     "add_annotation", "define_marker_block", "define_block_from_entities",
     "insert_block", "inspect_block_attributes", "set_block_attribute",
     "configure_sheet", "set_plan_viewport", "export_sheet_pdf",
@@ -405,14 +405,12 @@ class DrawingTools:
             return {"name": layer.Name, "created": created, "aci": layer.Color,
                     "linetype": layer.Linetype, "locked": bool(layer.Lock)}
 
-    def add_geometry(
-        self, drawing_path: str, layer: str,
-        kind: Literal["point", "line", "circle", "arc", "polyline", "polyline3d"],
-        points: list[list[float]], layout: str | None = None, radius: float | None = None,
-        angles_rad: list[float] | None = None, closed: bool = False,
-    ) -> dict:
-        """Create geometry from WCS XYZ coordinates, on the specified layer and space."""
+    def geometry_coordinates(self, kind, points, radius, angles_rad, closed):
+        if kind not in {"point", "line", "circle", "arc", "polyline", "polyline3d"}:
+            raise ValueError("Unsupported geometry kind.")
         coordinates = [self.backend.xyz(point) for point in points]
+        if any(len(p) != 3 or not all(math.isfinite(v) for v in p) for p in coordinates):
+            raise ValueError("Expected finite WCS XYZ coordinates.")
         if kind in {"point", "circle", "arc"} and len(coordinates) != 1:
             raise ValueError("Expected one WCS point.")
         if kind == "line" and len(coordinates) != 2:
@@ -432,29 +430,80 @@ class DrawingTools:
         if kind == "arc" and (angles_rad is None or len(angles_rad) != 2
                               or not all(math.isfinite(angle) for angle in angles_rad)):
             raise ValueError("Two finite arc angles in radians are required.")
+        return coordinates
+
+    @staticmethod
+    def create_geometry(space, name, kind, coordinates, radius, angles_rad, closed):
+        points_v = [array(point) for point in coordinates]
+        if kind == "point":
+            entity = space.AddPoint(points_v[0])
+        elif kind == "line":
+            entity = space.AddLine(*points_v)
+        elif kind == "circle":
+            entity = space.AddCircle(points_v[0], radius)
+        elif kind == "arc":
+            entity = space.AddArc(points_v[0], radius, *angles_rad)
+        elif kind == "polyline":
+            entity = space.AddLightWeightPolyline(array(v for point in coordinates for v in point[:2]))
+            entity.Normal = array([0.0, 0.0, 1.0])
+            entity.Elevation = coordinates[0][2]
+            entity.Closed = closed
+        else:
+            entity = space.Add3DPoly(array(v for point in coordinates for v in point))
+            entity.Closed = closed
+        entity.Layer = name
+        entity.Update()
+        return entity
+
+    def add_geometry(
+        self, drawing_path: str, layer: str,
+        kind: Literal["point", "line", "circle", "arc", "polyline", "polyline3d"],
+        points: list[list[float]], layout: str | None = None, radius: float | None = None,
+        angles_rad: list[float] | None = None, closed: bool = False,
+    ) -> dict:
+        """Create geometry from WCS XYZ coordinates, on the specified layer and space."""
+        coordinates = self.geometry_coordinates(kind, points, radius, angles_rad, closed)
         with self.change(drawing_path) as doc:
+            entity = self.create_geometry(self.space(doc, layout), self.layer(doc, layer),
+                                          kind, coordinates, radius, angles_rad, closed)
+            return self.record(doc, entity)
+
+    def add_geometry_batch(
+        self, drawing_path: str, layer: str,
+        kind: Literal["point", "line", "circle", "arc", "polyline", "polyline3d"],
+        items: list[list[list[float]]], expected_insunits: int,
+        layout: str | None = None, radius: float | None = None,
+        angles_rad: list[float] | None = None, closed: bool = False,
+    ) -> dict:
+        """Create up to 200 same-kind objects in one guarded work-copy call; return compact handles."""
+        if not 1 <= len(items) <= 200 or sum(map(len, items)) > 10000:
+            raise ValueError("Use 1–200 objects and at most 10000 total vertices per batch.")
+        if type(expected_insunits) is not int or not 0 <= expected_insunits <= 24:
+            raise ValueError("Supply the observed INSUNITS integer; no automatic unit conversion.")
+        coordinates = [self.geometry_coordinates(kind, item, radius, angles_rad, closed)
+                       for item in items]
+        handles = []
+        with self.change(drawing_path) as doc:
+            actual = int(doc.GetVariable("INSUNITS"))
+            if actual != expected_insunits:
+                raise ValueError("INSUNITS changed. Verify drawing units before writing.")
             name = self.layer(doc, layer)
             space = self.space(doc, layout)
-            points_v = [array(point) for point in coordinates]
-            if kind == "point":
-                entity = space.AddPoint(points_v[0])
-            elif kind == "line":
-                entity = space.AddLine(*points_v)
-            elif kind == "circle":
-                entity = space.AddCircle(points_v[0], radius)
-            elif kind == "arc":
-                entity = space.AddArc(points_v[0], radius, *angles_rad)
-            elif kind == "polyline":
-                entity = space.AddLightWeightPolyline(array(v for point in coordinates for v in point[:2]))
-                entity.Normal = array([0.0, 0.0, 1.0])
-                entity.Elevation = coordinates[0][2]
-                entity.Closed = closed
-            else:
-                entity = space.Add3DPoly(array(v for point in coordinates for v in point))
-                entity.Closed = closed
-            entity.Layer = name
-            entity.Update()
-            return self.record(doc, entity)
+            before = int(space.Count)
+            try:
+                for item in coordinates:
+                    entity = self.create_geometry(space, name, kind, item, radius, angles_rad, closed)
+                    handles.append(str(entity.Handle))
+                delta = int(space.Count) - before
+                if delta != len(items):
+                    raise RuntimeError("Unexpected entity count change.")
+            except Exception as error:
+                raise RuntimeError(
+                    f"Batch may be partial; {len(handles)} completed handles: {handles}. "
+                    "Inspect the working copy or undo the batch before retrying."
+                ) from error
+        return {"created": len(handles), "handles": handles, "layer": name,
+                "kind": kind, "insunits": actual, "entity_count_delta": delta}
 
     def edit_entity(
         self, drawing_path: str, handle: str, expected_type: str, layout: str | None = None,
