@@ -87,6 +87,17 @@ class DrawingTests(unittest.TestCase):
             self.tools.save_copy(str(self.dwg), str(forbidden))
         self.backend.document.assert_not_called()
 
+    def test_activate_returns_state_from_verified_cad_app(self):
+        self.backend.norm = os.path.normcase
+        doc = SimpleNamespace(Path=str(self.work), FullName=str(self.dwg), Activate=Mock())
+        app = SimpleNamespace(Documents=[doc])
+        state = {"pid": 101, "hwnd": 1001, "path": str(self.dwg)}
+        with (patch.object(self.tools, "app_for_document_switch", return_value=app),
+              patch.object(self.tools, "drawing_state", return_value=state) as read_state):
+            self.assertEqual(self.tools.activate_drawing(str(self.dwg)), state)
+            doc.Activate.assert_called_once_with()
+            read_state.assert_called_once_with(app)
+
     def test_local_names_cannot_be_dwg_paths(self):
         self.assertEqual(cad_name("Survey point 1"), "Survey point 1")
         for name in ("", "*XREF", "D:\\a.dwg", "../file", "a|b"):

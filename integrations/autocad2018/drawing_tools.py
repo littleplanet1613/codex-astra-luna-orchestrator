@@ -30,7 +30,7 @@ GEOMETRY_TYPES = {"AcDbPoint", "AcDbLine", "AcDbCircle", "AcDbArc",
                   "AcDbPolyline", "AcDb2dPolyline", "AcDb3dPolyline"}
 EDIT_TYPES = GEOMETRY_TYPES | TEXT_TYPES | {"AcDbBlockReference", "AcDbAlignedDimension"}
 TOOLS = (
-    "autocad_identity", "active_drawing", "save_copy", "save_drawing",
+    "autocad_identity", "active_drawing", "activate_drawing", "save_copy", "save_drawing",
     "new_working_dwg", "open_working_copy", "open_working_dwg",
     "close_working_dwg", "list_layouts", "upsert_layer", "add_geometry", "edit_entity",
     "add_annotation", "define_marker_block", "define_block_from_entities",
@@ -95,7 +95,7 @@ class DrawingTools:
 
     def register(self):
         self.backend.document = self.document
-        for name in ("active_drawing", "save_copy", "save_drawing"):
+        for name in ("active_drawing", "activate_drawing", "save_copy", "save_drawing"):
             self.backend.server.remove_tool(name)
         for name in TOOLS:
             self.backend.tool(getattr(self, name))
@@ -191,13 +191,26 @@ class DrawingTools:
 
     def active_drawing(self) -> dict:
         """Report verified AutoCAD PID, HWND, profile, version and active DWG."""
-        app = self.backend.app()
+        return self.drawing_state(self.backend.app())
+
+    def drawing_state(self, app):
         doc = app.ActiveDocument
         return {
             **self.identity(app),
             "path": doc.FullName, "name": doc.Name, "saved": bool(doc.Saved),
             "model_entities": doc.ModelSpace.Count, "space": doc.GetVariable("CTAB"),
         }
+
+    def activate_drawing(self, drawing_path: str) -> dict:
+        """Activate an already open drawing by exact path and report the verified AutoCAD identity."""
+        if not Path(drawing_path).is_absolute():
+            raise ValueError("An absolute drawing path is required.")
+        app = self.app_for_document_switch()
+        for doc in app.Documents:
+            if doc.Path and self.backend.norm(doc.FullName) == self.backend.norm(drawing_path):
+                doc.Activate()
+                return self.drawing_state(app)
+        raise ValueError("Requested DWG is not open.")
 
     def new_working_dwg(self, output_path: str) -> dict:
         """Create a blank drawing under the working directory, using the default AutoCAD template."""

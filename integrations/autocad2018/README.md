@@ -58,4 +58,12 @@ Python environment on a Windows session with verified standalone AutoCAD 2018.
     python integrations/autocad2018/acceptance.py --config <Codex-config> --workspace <existing-workspace> --attach-verified-existing
 
 Exit code 2 means preflight blocked live testing before any drawing operation.
+If a different AutoCAD release is running, the diagnostic reports it. The old
+local backend defaulted to AutoCAD.Application.24 (AutoCAD 2021); that legacy
+default does not qualify as a standalone R22 session.
+
+The acceptance runner checks that every tool advertised by the local MCP
+was successfully exercised. Geometry copy, deletion and the DWG round trip
+use synthetic working drawings. Saved artifacts include a separately saved DWG
+copy and a PDF. The runner compares source and donor hashes after the test.
 A successful live run still requires PDF rendering and visual inspection.

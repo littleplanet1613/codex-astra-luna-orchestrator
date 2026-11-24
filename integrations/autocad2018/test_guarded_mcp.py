@@ -55,7 +55,7 @@ class GuardTests(unittest.TestCase):
             self.check({**PLAIN, "command": None})
 
     def test_rejects_wrong_or_unknown_release(self):
-        with self.assertRaisesRegex(RuntimeError, "found 0"):
+        with self.assertRaisesRegex(RuntimeError, "No running AutoCAD 2018 .*Observed releases: R24.0"):
             self.check(NEWER)
         with self.assertRaisesRegex(RuntimeError, "unverifiable"):
             self.check(PLAIN, {**NEWER, "version": "unknown"})

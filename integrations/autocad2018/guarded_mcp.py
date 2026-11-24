@@ -146,7 +146,10 @@ def verified_process(rows, expected_executable):
     if any(not row["path"] or not version for row, version in zip(rows, versions)):
         raise RuntimeError("An AutoCAD process has unverifiable identity. COM connection refused.")
     release = [row for row, version in zip(rows, versions) if version.group(1) == "22"]
-    if len(release) != 1:
+    if not release:
+        observed = ", ".join(sorted({row["version"] for row in rows})) or "none"
+        raise RuntimeError(f"No running AutoCAD 2018 (R22) in this Windows session. Observed releases: {observed}.")
+    if len(release) > 1:
         raise RuntimeError(
             f"Expected exactly one R22 process in this Windows session, found {len(release)}. "
             "Shared COM registration cannot uniquely identify standalone AutoCAD 2018."
