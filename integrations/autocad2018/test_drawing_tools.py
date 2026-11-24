@@ -177,5 +177,66 @@ class DrawingTests(unittest.TestCase):
         self.backend.document.assert_not_called()
 
 
+    def test_batch_validates_all_geometry_before_com(self):
+        self.backend.xyz = lambda point: point
+        with self.assertRaisesRegex(ValueError, "two WCS endpoints"):
+            self.tools.add_geometry_batch(str(self.dwg), "SURVEY", "line",
+                                          [[[0, 0, 0], [1, 1, 0]], [[2, 2, 0]]], 6)
+        self.backend.document.assert_not_called()
+        with self.assertRaisesRegex(ValueError, "1–200"):
+            self.tools.add_geometry_batch(str(self.dwg), "SURVEY", "point",
+                                          [[[0, 0, 0]]] * 201, 6)
+        self.backend.document.assert_not_called()
+
+    def test_batch_refuses_original_before_com(self):
+        self.backend.xyz = lambda point: point
+        with self.assertRaises(ValueError):
+            self.tools.add_geometry_batch(str(self.original), "SURVEY", "point",
+                                          [[[1, 2, 3]]], 6)
+        self.backend.document.assert_not_called()
+
+    def test_batch_checks_units_and_groups_writes(self):
+        self.backend.xyz = lambda point: point
+        space = SimpleNamespace(Count=10)
+        doc = SimpleNamespace(ModelSpace=space, GetVariable=lambda name: 6,
+                              StartUndoMark=Mock(), EndUndoMark=Mock())
+        self.backend.document.return_value = doc
+        def create(*args):
+            space.Count += 1
+            return SimpleNamespace(Handle=str(space.Count))
+        with (patch.object(self.tools, "layer", return_value="SURVEY"),
+              patch.object(self.tools, "create_geometry", side_effect=create) as writer):
+            with self.assertRaisesRegex(ValueError, "INSUNITS changed"):
+                self.tools.add_geometry_batch(str(self.dwg), "SURVEY", "point",
+                                              [[[1, 2, 3]]], 4)
+            writer.assert_not_called()
+            doc.StartUndoMark.reset_mock()
+            doc.EndUndoMark.reset_mock()
+            self.backend.document.reset_mock()
+            result = self.tools.add_geometry_batch(str(self.dwg), "SURVEY", "point",
+                                                   [[[1, 2, 3]], [[2, 3, 4]]], 6)
+            self.assertEqual(result["created"], 2)
+            self.assertEqual(result["handles"], ["11", "12"])
+            self.assertEqual(result["entity_count_delta"], 2)
+            self.backend.document.assert_called_once_with(str(self.dwg), True)
+            doc.StartUndoMark.assert_called_once()
+            doc.EndUndoMark.assert_called_once()
+
+    def test_batch_failure_reports_partial_state(self):
+        self.backend.xyz = lambda point: point
+        doc = SimpleNamespace(ModelSpace=SimpleNamespace(Count=1),
+                              GetVariable=lambda name: 6,
+                              StartUndoMark=Mock(), EndUndoMark=Mock())
+        self.backend.document.return_value = doc
+        with (patch.object(self.tools, "layer", return_value="SURVEY"),
+              patch.object(self.tools, "create_geometry",
+                           side_effect=[SimpleNamespace(Handle="AB"), RuntimeError("COM failure")])):
+            with self.assertRaisesRegex(RuntimeError, "Batch may be partial; 1 completed"):
+                self.tools.add_geometry_batch(str(self.dwg), "SURVEY", "point",
+                                              [[[1, 2, 3]], [[2, 3, 4]]], 6)
+        doc.EndUndoMark.assert_called_once()
+
+
+
 if __name__ == "__main__":
     unittest.main()
