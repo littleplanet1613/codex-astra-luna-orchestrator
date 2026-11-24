@@ -33,7 +33,7 @@ EDIT_TYPES = GEOMETRY_TYPES | TEXT_TYPES | {"AcDbBlockReference", "AcDbAlignedDi
 TOOLS = (
     "autocad_identity", "active_drawing", "activate_drawing", "save_copy", "save_drawing",
     "new_working_dwg", "open_working_copy", "open_working_dwg",
-    "close_working_dwg", "list_layouts", "upsert_layer", "add_geometry", "add_geometry_batch", "edit_entity",
+    "close_working_dwg", "list_layouts", "drawing_units", "upsert_layer", "add_geometry", "add_geometry_batch", "edit_entity",
     "add_annotation", "define_marker_block", "define_block_from_entities",
     "insert_block", "inspect_block_attributes", "set_block_attribute",
     "configure_sheet", "set_plan_viewport", "export_sheet_pdf",
@@ -472,6 +472,15 @@ class DrawingTools:
             entity = self.create_geometry(self.space(doc, layout), self.layer(doc, layer),
                                           kind, coordinates, radius, angles_rad, closed)
             return self.record(doc, entity)
+
+    def drawing_units(self, drawing_path: str) -> dict:
+        """Read unit metadata and UCS axes without changing the drawing."""
+        doc = self.document(drawing_path)
+        keys = ("INSUNITS", "MEASUREMENT", "LUNITS", "LUPREC", "UCSNAME",
+                "UCSORG", "UCSXDIR", "UCSYDIR", "CTAB")
+        variables = {key: doc.GetVariable(key) for key in keys}
+        return {"path": drawing_path, "variables": variables,
+                "geometry_units_confirmed": False}
 
     def add_geometry_batch(
         self, drawing_path: str, layer: str,
