@@ -20,7 +20,7 @@ PLOT_LAYOUT = 5
 MILLIMETERS = 1
 VIEWPORT_CUSTOM_SCALE = 1
 MTEXT_CONTENT = 2
-ADD_MLEADER_R22 = 1605
+ADD_MLEADER_DISPID = 1605
 PDF_DEVICES = {
     "dwg to pdf.pc3", "autocad pdf (general documentation).pc3",
     "autocad pdf (high quality print).pc3", "autocad pdf (smallest file).pc3",
@@ -77,6 +77,25 @@ def set_short_variable(doc, name, value):
     doc.SetVariable(name, win32com.client.VARIANT(pythoncom.VT_I2, int(value)))
 
 
+def retry_com_read(read):
+    for attempt in range(3):
+        try:
+            return read()
+        except (AttributeError, pythoncom.com_error) as error:
+            if attempt == 2 or (isinstance(error, pythoncom.com_error)
+                                and error.hresult not in {-2147418111, -2147417846}):
+                raise
+            pythoncom.PumpWaitingMessages()
+            time.sleep(0.25)
+
+
+def put_dispatch_property(target, name, value):
+    # AutoCAD can return an automation wrapper without a property setter map.
+    dispatch = target._oleobj_
+    dispid = dispatch.GetIDsOfNames(name)
+    dispatch.Invoke(dispid, 0, pythoncom.DISPATCH_PROPERTYPUT, False, value)
+
+
 def pdf_device(layout, name):
     candidates = {item.casefold(): item for item in layout.GetPlotDeviceNames()}
     if name.casefold() not in PDF_DEVICES or name.casefold() not in candidates:
@@ -94,9 +113,9 @@ def active_profile(app):
 
 
 def add_mleader(space, points):
-    # R22 declares the leader index as an [out] Long*. pywin32 allocates it.
+    # AutoCAD 2021 exposes the leader index as an [out] Long*.
     result = space._oleobj_.InvokeTypes(
-        ADD_MLEADER_R22, 0, pythoncom.DISPATCH_METHOD, (pythoncom.VT_DISPATCH, 0),
+        ADD_MLEADER_DISPID, 0, pythoncom.DISPATCH_METHOD, (pythoncom.VT_DISPATCH, 0),
         ((pythoncom.VT_VARIANT, 1), (pythoncom.VT_BYREF | pythoncom.VT_I4, 2)), points,
     )
     entity = result[0] if isinstance(result, tuple) else result
@@ -308,7 +327,15 @@ class DrawingTools:
         # AutoCAD SaveAs may overwrite an existing path. Only give it a private directory.
         directory = Path(tempfile.mkdtemp(prefix=".cad-stage-", dir=target.parent))
         staged = directory / "drawing.dwg"
-        doc.SaveAs(str(staged), DWG_2018)
+        try:
+            save_as = doc.SaveAs
+        except AttributeError:
+            # Resolve a missing method binding before issuing exactly one write.
+            dispatch = doc._oleobj_
+            dispid = dispatch.GetIDsOfNames("SaveAs")
+            dispatch.Invoke(dispid, 0, pythoncom.DISPATCH_METHOD, False, str(staged), DWG_2018)
+        else:
+            save_as(str(staged), DWG_2018)
         if not doc.Saved or self.backend.norm(doc.FullName) != self.backend.norm(str(staged)):
             raise RuntimeError(f"SaveAs did not confirm the private staging file: {staged}")
         doc.Close(False)
@@ -885,34 +912,48 @@ class DrawingTools:
             sheet = self.sheet(doc, layout)
             name_layer = self.layer(doc, layer)
             viewport = None if handle is None else self.entity(doc, handle, layout, {"AcDbViewport"})
-            previous = doc.ActiveLayout
+            previous = retry_com_read(lambda: doc.ActiveLayout)
+            previous_name = retry_com_read(lambda: previous.Name)
+            sheet_name = sheet.Name
+            app = doc.Application
             try:
-                doc.ActiveLayout = sheet
+                if previous_name != sheet_name:
+                    put_dispatch_property(doc, "ActiveLayout", sheet)
+                    doc = self.ready_document(app, doc)
                 if viewport is None:
                     viewport = doc.PaperSpace.AddPViewport(array(center), width, height)
                 else:
-                    viewport.DisplayLocked = False
-                    viewport.Center = array(center)
-                    viewport.Width = width
-                    viewport.Height = height
-                viewport.Layer = name_layer
+                    put_dispatch_property(viewport, "DisplayLocked", False)
+                    put_dispatch_property(viewport, "Center", array(center))
+                    put_dispatch_property(viewport, "Width", width)
+                    put_dispatch_property(viewport, "Height", height)
+                put_dispatch_property(viewport, "Layer", name_layer)
                 viewport.Display(True)
                 if tuple(viewport.Direction) != (0.0, 0.0, 1.0):
-                    viewport.Direction = array([0.0, 0.0, 1.0])
-                viewport.Target = array(target)
+                    put_dispatch_property(viewport, "Direction", array([0.0, 0.0, 1.0]))
+                put_dispatch_property(viewport, "Target", array(target))
                 doc.MSpace = True
                 try:
-                    doc.ActivePViewport = viewport
-                    doc.Application.ZoomCenter(array(target), 1.0)
-                    viewport.StandardScale = VIEWPORT_CUSTOM_SCALE
-                    viewport.CustomScale = scale
+                    # Dynamic binding can lose the setter map during a layout switch.
+                    # Resolve this exact setter locally on the already verified document.
+                    put_dispatch_property(doc, "ActivePViewport", viewport)
+                    viewport_handle = str(viewport.Handle)
+                    app.ZoomCenter(array(target), 1.0)
+                    doc = self.ready_document(app, doc)
+                    viewport = doc.HandleToObject(viewport_handle)
+                    put_dispatch_property(viewport, "StandardScale", VIEWPORT_CUSTOM_SCALE)
+                    put_dispatch_property(viewport, "CustomScale", scale)
                 finally:
                     doc.MSpace = False
-                viewport.DisplayLocked = True
+                doc = self.ready_document(app, doc)
+                viewport = doc.HandleToObject(viewport_handle)
+                put_dispatch_property(viewport, "DisplayLocked", True)
                 viewport.Update()
-                return self.record(doc, viewport)
             finally:
-                doc.ActiveLayout = previous
+                if previous_name != sheet_name and retry_com_read(lambda: doc.ActiveLayout.Name) != previous_name:
+                    put_dispatch_property(doc, "ActiveLayout", previous)
+            doc = self.ready_document(app, doc)
+            return retry_com_read(lambda: self.record(doc, doc.HandleToObject(viewport_handle)))
 
     def export_sheet_pdf(self, drawing_path: str, layout: str, output_path: str) -> dict:
         """Export one already configured paper layout to a new PDF using foreground plotting."""

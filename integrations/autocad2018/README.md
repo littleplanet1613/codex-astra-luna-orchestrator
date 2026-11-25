@@ -115,3 +115,11 @@ https://pypi.org/project/autocad-mcp-pro/1.8.0/
 
 
 Use `edit_batch` for up to 100 typed edits, block inserts, attribute updates or annotations on one managed drawing. On failure inspect the completed prefix and failed operation before retrying. The batch is not atomic.
+
+For an equivalent live benchmark, use a confirmed blank test source and a
+dedicated existing workspace. The script makes two managed copies, applies
+100–200 identical points to each and checks coordinates and source SHA-256.
+Report write-call time and compact JSON request/result size without conflating
+those measurements with the model usage allowance.
+
+    python integrations/autocad2018/benchmark.py --config <candidate-config> --workspace <test-workspace> --source <blank-test-dwg> --count 100
