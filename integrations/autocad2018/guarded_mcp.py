@@ -42,13 +42,13 @@ class Release(NamedTuple):
         ))
 
 
-RELEASES = {"2021": Release("2021", "24", "ACAD-4101"), "2018": Release("2018", "22", "ACAD-1001")}
+RELEASES = {"2021": Release("2021", "24", "ACAD-4101")}
 
 
 def configured_release():
     year = os.environ.get("AUTOCAD_RELEASE", "2021")
     if year not in RELEASES:
-        raise ValueError("AUTOCAD_RELEASE must select standalone AutoCAD 2021 or 2018.")
+        raise ValueError("AUTOCAD_RELEASE must select standalone AutoCAD 2021 (R24.0).")
     return RELEASES[year]
 
 
@@ -283,7 +283,7 @@ def diagnose_autocad() -> dict:
         ],
         "progid": policy.progid,
         "target_release": policy.year,
-        "attach_enabled": os.environ.get("AUTOCAD2018_ATTACH") == "verified-exclusive",
+        "attach_enabled": os.environ.get("AUTOCAD_ATTACH") == "verified-exclusive",
     }
     try:
         result["registry_only"] = com_registration(installed_executable(policy), policy)
@@ -301,7 +301,7 @@ def diagnose_autocad() -> dict:
 def verified_application():
     policy = configured_release()
     row, launch_profile, profiles, _ = preflight(policy)
-    if os.environ.get("AUTOCAD2018_ATTACH") != "verified-exclusive":
+    if os.environ.get("AUTOCAD_ATTACH") != "verified-exclusive":
         raise RuntimeError("Standalone AutoCAD COM attachment is disabled in this deployment.")
     try:
         app = win32com.client.GetActiveObject(policy.progid)
@@ -323,7 +323,7 @@ def verified_application():
 
 
 def load_backend():
-    backend_path = Path(os.environ["AUTOCAD2018_BACKEND"]).resolve(strict=True)
+    backend_path = Path(os.environ["AUTOCAD_BACKEND"]).resolve(strict=True)
     spec = importlib.util.spec_from_file_location("local_autocad_backend", backend_path)
     if spec is None or spec.loader is None:
         raise RuntimeError("Cannot load the existing local AutoCAD MCP backend.")

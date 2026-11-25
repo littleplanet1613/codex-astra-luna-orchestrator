@@ -5,7 +5,7 @@ description: Edit DWG working copies and check sheet output using the local stan
 
 # Standalone AutoCAD drawing work
 
-Use AutoCAD 2021 (R24.0) by default. AutoCAD 2018 (R22.0) is an explicitly selected secondary mode. Civil 3D is forbidden in every version.
+Use AutoCAD 2021 (R24.0) by default. Civil 3D is forbidden in every version.
 
 1. Call autocad diagnose_autocad. Require one process in the selected COM release family, a responding standalone AutoCAD window, a verified module inventory and standalone product/profile registration. If the preflight refuses, stop before COM. After it passes, require active_drawing to report the same AutoCAD PID and HWND and a registered standalone profile. The profile name, a shared acad.exe path and a Civil 3D “as AutoCAD” shortcut cannot establish the product.
 2. Inspect the source without modifying it. Use open_working_copy to copy the on-disk DWG into the configured run directory. Tell the user if unsaved source edits affect the request. For testing use new_working_dwg. Use exact DWG paths, documented units and WCS XYZ. Inspect the relevant entity before changing it. Preserve OCS plane, bulges and topology for existing planar polylines.

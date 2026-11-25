@@ -8,8 +8,8 @@ from pathlib import Path
 import shutil
 import tomllib
 
-SAFE_ENV = {"AUTOCAD_RELEASE", "AUTOCAD2018_ATTACH", "AUTOCAD2018_BACKEND",
-            "AUTOCAD2018_WORKSPACE", "CAD_LAUNCH", "AUTOCAD_MCP_BACKEND"}
+SAFE_ENV = {"AUTOCAD_RELEASE", "AUTOCAD_ATTACH", "AUTOCAD_BACKEND",
+            "AUTOCAD_WORKSPACE", "PYTHONIOENCODING", "CAD_LAUNCH", "AUTOCAD_MCP_BACKEND"}
 
 def write_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -33,6 +33,8 @@ def prepare(config_path, output, release, server="autocad"):
     args = entry.get("args", [])
     if Path(command).name.casefold() not in {"python.exe", "pythonw.exe", "python"}:
         raise ValueError("Expected the existing guarded Python MCP; resolve its interpreter explicitly.")
+    if args[:1] == ["-u"]:
+        args = args[1:]
     if len(args) != 1 or Path(args[0]).name != "guarded_mcp.py":
         raise ValueError("Expected exactly the reviewed guarded_mcp.py entry point. Never use raw uvx here.")
     guard = absolute_existing(args[0])
@@ -43,10 +45,10 @@ def prepare(config_path, output, release, server="autocad"):
         raise ValueError("Unreviewed environment keys: " + ", ".join(sorted(set(env) - SAFE_ENV)))
     if env.get("AUTOCAD_RELEASE", "2021") != release:
         raise ValueError("Selected release differs from existing MCP configuration; review locally first.")
-    env["AUTOCAD2018_BACKEND"] = absolute_existing(env["AUTOCAD2018_BACKEND"])
-    env["AUTOCAD2018_WORKSPACE"] = absolute_existing(env["AUTOCAD2018_WORKSPACE"], directory=True)
+    env["AUTOCAD_BACKEND"] = absolute_existing(env["AUTOCAD_BACKEND"])
+    env["AUTOCAD_WORKSPACE"] = absolute_existing(env["AUTOCAD_WORKSPACE"], directory=True)
     # Diagnostic only until the local operator has verified the selected application.
-    env.update(AUTOCAD_RELEASE=release, AUTOCAD2018_ATTACH="preflight-only",
+    env.update(AUTOCAD_RELEASE=release, AUTOCAD_ATTACH="preflight-only",
                CAD_LAUNCH="never", AUTOCAD_MCP_BACKEND="com")
     skills_root = Path(__file__).resolve().parents[2] / "profiles/plus/agents/skills"
     names = ("cad-autocad", "geo-survey", "geo-asbuilt", "geo-deviation",
@@ -91,7 +93,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True, help="New directory; not an existing marketplace.")
-    parser.add_argument("--release", choices=("2018", "2021"), required=True)
+    parser.add_argument("--release", choices=("2021",), required=True)
     parser.add_argument("--server", default="autocad")
     args = parser.parse_args()
     print(prepare(args.config, args.output, args.release, args.server))

@@ -33,7 +33,7 @@ EDIT_TYPES = GEOMETRY_TYPES | TEXT_TYPES | {"AcDbBlockReference", "AcDbAlignedDi
 TOOLS = (
     "autocad_identity", "active_drawing", "activate_drawing", "save_copy", "save_drawing",
     "new_working_dwg", "open_working_copy", "open_working_dwg",
-    "close_working_dwg", "list_layouts", "drawing_units", "upsert_layer", "add_geometry", "add_geometry_batch", "edit_entity",
+    "close_working_dwg", "list_layouts", "drawing_units", "upsert_layer", "add_geometry", "add_geometry_batch", "edit_batch", "edit_entity",
     "add_annotation", "define_marker_block", "define_block_from_entities",
     "insert_block", "inspect_block_attributes", "set_block_attribute",
     "configure_sheet", "set_plan_viewport", "export_sheet_pdf",
@@ -118,7 +118,7 @@ class DrawingTools:
 
     @staticmethod
     def workspace():
-        configured = os.environ.get("AUTOCAD2018_WORKSPACE")
+        configured = os.environ.get("AUTOCAD_WORKSPACE")
         if not configured:
             raise ValueError("CAD writes require an explicitly configured working-copy directory.")
         return Path(configured).resolve(strict=True)
@@ -518,6 +518,41 @@ class DrawingTools:
                 ) from error
         return {"created": len(handles), "handles": handles, "layer": name,
                 "kind": kind, "insunits": actual, "entity_count_delta": delta}
+
+    def edit_batch(self, drawing_path: str, operations: list[dict]) -> dict:
+        """Run up to 100 guarded edits, block changes or annotations. Stops on first error."""
+        from inspect import signature
+
+        handlers = {
+            "edit_entity": self.edit_entity,
+            "insert_block": self.insert_block,
+            "set_block_attribute": self.set_block_attribute,
+            "add_annotation": self.add_annotation,
+        }
+        if not 1 <= len(operations) <= 100:
+            raise ValueError("Use 1–100 operations per batch.")
+        pending = []
+        for index, item in enumerate(operations):
+            if (set(item) != {"operation", "arguments"}
+                    or not isinstance(item["operation"], str) or item["operation"] not in handlers
+                    or not isinstance(item["arguments"], dict) or "drawing_path" in item["arguments"]):
+                raise ValueError(f"Invalid operation at index {index}.")
+            handler = handlers[item["operation"]]
+            signature(handler).bind(drawing_path, **item["arguments"])
+            pending.append((handler, item["arguments"]))
+
+        results = []
+        for index, (handler, arguments) in enumerate(pending):
+            try:
+                result = handler(drawing_path, **arguments)
+            except Exception as error:
+                return {"completed": len(results), "results": results,
+                        "failed_index": index, "error": str(error),
+                        "inspect_before_retry": True}
+            result = result.get("after", result)
+            results.append({key: result[key] for key in ("handle", "type", "layer", "value")
+                            if key in result})
+        return {"completed": len(results), "results": results}
 
     def edit_entity(
         self, drawing_path: str, handle: str, expected_type: str, layout: str | None = None,

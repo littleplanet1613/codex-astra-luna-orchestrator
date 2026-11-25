@@ -1,18 +1,18 @@
 # Standalone AutoCAD MCP
 
-Primary target: AutoCAD 2021 (R24.0, AutoCAD.Application.24). Secondary target: AutoCAD 2018 (R22.0, AutoCAD.Application.22). Civil 3D is prohibited in every version.
+Supported target: AutoCAD 2021 (R24.0, AutoCAD.Application.24). Civil 3D is prohibited in every version.
 
 The wrapper loads the existing local stdio backend and reuses its Python
 environment with pywin32. It does not start AutoCAD or change Civil 3D settings.
 
 ## Attachment
 
-Use the installed wrapper as the entry point. Set AUTOCAD2018_BACKEND to the
-absolute path of the reviewed local Python backend. Set AUTOCAD2018_WORKSPACE
+Use the installed wrapper as the entry point. Set AUTOCAD_BACKEND to the
+absolute path of the reviewed local Python backend. Set AUTOCAD_WORKSPACE
 to an existing dedicated drawing-copy directory to enable writes. Keep the
 Civil 3D integration disabled for this workflow.
 
-Set AUTOCAD_RELEASE=2018 explicitly for the secondary mode. AutoCAD 2021 is the default. There is no automatic release fallback.
+Use AUTOCAD_RELEASE=2021. The guard attaches only to a verified existing session.
 
 A health check via diagnose_autocad only inspects Windows metadata. It reports
 the COM registry entry separately from an actual connection. It requires one
@@ -23,7 +23,7 @@ as Windows arguments. They may be reordered or omitted, and explicit vertical
 choices are refused. A shortcut, title, shared executable, or ProgID alone
 cannot identify the running product.
 
-The default is preflight only. AUTOCAD2018_ATTACH=verified-exclusive permits
+The default is preflight only. AUTOCAD_ATTACH=verified-exclusive permits
 GetActiveObject on a passing preflight. The returned application must match
 the verified PID, HWND, path, exact release, standalone window and registered
 profile before DWG access. Autodesk COM attachment is never attempted when
@@ -112,3 +112,6 @@ working configuration until the new one passes acceptance.
 References: https://developers.openai.com/plugins/build/plugins ;
 https://learn.chatgpt.com/docs/extend/mcp ;
 https://pypi.org/project/autocad-mcp-pro/1.8.0/
+
+
+Use `edit_batch` for up to 100 typed edits, block inserts, attribute updates or annotations on one managed drawing. On failure inspect the completed prefix and failed operation before retrying. The batch is not atomic.

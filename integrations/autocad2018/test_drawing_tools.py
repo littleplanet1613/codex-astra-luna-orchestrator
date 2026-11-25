@@ -20,7 +20,7 @@ class DrawingTests(unittest.TestCase):
         self.original.write_bytes(b"original placeholder")
         self.dwg = self.work / "acceptance.dwg"
         self.dwg.write_bytes(b"work placeholder")
-        self.enterContext(patch.dict(os.environ, {"AUTOCAD2018_WORKSPACE": str(self.work)}))
+        self.enterContext(patch.dict(os.environ, {"AUTOCAD_WORKSPACE": str(self.work)}))
         self.backend = SimpleNamespace(document=Mock(), undo=Mock(return_value=nullcontext()))
         self.tools = DrawingTools(self.backend, "Autodesk AutoCAD 2021")
         self.tools.record_managed(self.dwg)

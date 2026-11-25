@@ -29,9 +29,9 @@ async def call(session, tool, **arguments):
 
 async def run(config, workspace, attach_verified_existing):
     config = tomllib.loads(config.read_text(encoding="utf-8"))["mcp_servers"]["autocad"]
-    env = {**config["env"], "AUTOCAD2018_WORKSPACE": str(workspace)}
+    env = {**config["env"], "AUTOCAD_WORKSPACE": str(workspace)}
     if attach_verified_existing:
-        env["AUTOCAD2018_ATTACH"] = "verified-exclusive"
+        env["AUTOCAD_ATTACH"] = "verified-exclusive"
     parameters = StdioServerParameters(command=config["command"], args=config["args"], env=env)
     async with stdio_client(parameters) as (reader, writer):
         async with ClientSession(reader, writer) as session:
@@ -116,6 +116,11 @@ async def run(config, workspace, attach_verified_existing):
                 objects[kind] = await tool("add_geometry", kind=kind, layer="SURVEY_TEST", **data)
             initial_line = await checked("inspect_entity", handle=objects["line"]["handle"])
             assert initial_line["entity"]["EndPoint"] == [100, 15, 0]
+            edits = await tool("edit_batch", operations=[{"operation": "edit_entity", "arguments": {
+                "handle": objects["line"]["handle"], "expected_type": "AcDbLine",
+                "line_endpoints_wcs": [[10, 15, 0], [103, 15, 0]],
+            }}])
+            assert edits["completed"] == 1
             await tool("edit_entity", handle=objects["line"]["handle"], expected_type="AcDbLine",
                        line_endpoints_wcs=[[10, 15, 0], [103, 15, 0]])
             boundary = await tool("add_geometry", layer="SURVEY_TEST", kind="line",
