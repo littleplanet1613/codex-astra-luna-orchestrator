@@ -897,7 +897,8 @@ class DrawingTools:
                     viewport.Height = height
                 viewport.Layer = name_layer
                 viewport.Display(True)
-                viewport.Direction = array([0.0, 0.0, 1.0])
+                if tuple(viewport.Direction) != (0.0, 0.0, 1.0):
+                    viewport.Direction = array([0.0, 0.0, 1.0])
                 viewport.Target = array(target)
                 doc.MSpace = True
                 try:

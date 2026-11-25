@@ -9,9 +9,11 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import time
 from typing import NamedTuple
 import winreg
 
+import pythoncom
 import pywintypes
 import win32com.client
 import win32gui
@@ -299,6 +301,20 @@ def diagnose_autocad() -> dict:
 
 
 def verified_application():
+    # Reacquire and revalidate only read-only identity. Never replay a drawing mutation.
+    for attempt in range(3):
+        try:
+            return verified_application_once()
+        except (AttributeError, pywintypes.com_error) as error:
+            if isinstance(error, pywintypes.com_error) and error.hresult not in {-2147418111, -2147417846}:
+                raise
+            if attempt == 2:
+                raise RuntimeError("Could not read verified AutoCAD COM identity after 3 attempts.") from error
+            pythoncom.PumpWaitingMessages()
+            time.sleep(0.25)
+
+
+def verified_application_once():
     policy = configured_release()
     row, launch_profile, profiles, _ = preflight(policy)
     if os.environ.get("AUTOCAD_ATTACH") != "verified-exclusive":

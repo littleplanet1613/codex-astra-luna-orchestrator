@@ -117,6 +117,15 @@ class GuardTests(unittest.TestCase):
             self.assertIs(guard.verified_application(), app)
             com.assert_called_with(R24.progid)
 
+    def test_missing_hwnd_reacquires_identity_without_bypassing_refusal(self):
+        with (patch.object(guard, "verified_application_once",
+                           side_effect=[AttributeError("HWND"), RuntimeError("COM window mismatch")]) as verify,
+              patch.object(guard.time, "sleep"),
+              patch.object(guard.pythoncom, "PumpWaitingMessages")):
+            with self.assertRaisesRegex(RuntimeError, "COM window mismatch"):
+                guard.verified_application()
+            self.assertEqual(verify.call_count, 2)
+
     def test_progid_registration_path_is_checked(self):
         with patch.object(guard, "registry_value", side_effect=["{example}", f"{EXE} /Automation"]):
             self.assertEqual(guard.com_registration(EXE, R24)["local_server"], EXE)
