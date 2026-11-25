@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
+from time import perf_counter
 import tomllib
 
 from mcp import ClientSession, StdioServerParameters
@@ -17,8 +18,16 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-async def call(session, tool, **arguments):
+async def call(session, tool, metrics=None, **arguments):
+    start = perf_counter()
     result = await session.call_tool(tool, arguments)
+    if metrics is not None:
+        metrics.append({
+            "ms": round((perf_counter() - start) * 1000, 2),
+            "request_bytes": len(json.dumps({"name": tool, "arguments": arguments},
+                                            ensure_ascii=False, separators=(",", ":")).encode("utf-8")),
+            "response_bytes": len(result.model_dump_json(exclude_none=True).encode("utf-8")),
+        })
     if result.isError:
         messages = [content.text for content in result.content if content.type == "text"]
         raise RuntimeError(f"{tool}: {' '.join(messages)}")
@@ -39,9 +48,9 @@ async def run(config, workspace, attach_verified_existing):
             registered_tools = {tool.name for tool in (await session.list_tools()).tools}
             covered = set()
 
-            async def checked(tool_name, **kwargs):
+            async def checked(tool_name, metrics=None, **kwargs):
                 print(f"Checking {tool_name}", flush=True)
-                response = await call(session, tool_name, **kwargs)
+                response = await call(session, tool_name, metrics, **kwargs)
                 covered.add(tool_name)
                 return response
 
@@ -78,15 +87,23 @@ async def run(config, workspace, attach_verified_existing):
             )
             units = await checked("drawing_units", drawing_path=str(donor))
             observed_units = int(units["variables"]["INSUNITS"])
-            batch = await checked("add_geometry_batch", drawing_path=str(donor),
+            points = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+            single_metrics, batch_metrics = [], []
+            for coordinates in points:
+                point = await checked("add_geometry", metrics=single_metrics, drawing_path=str(donor),
+                                      layer="SURVEY_TEST", kind="point", points=[coordinates])
+                assert point["Coordinates"] == coordinates
+            batch = await checked("add_geometry_batch", metrics=batch_metrics, drawing_path=str(donor),
                                   layer="SURVEY_TEST", kind="point",
-                                  items=[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]]],
+                                  items=[[coordinates] for coordinates in points],
                                   expected_insunits=observed_units)
             assert batch["created"] == batch["entity_count_delta"] == 3
             assert len(set(batch["handles"])) == 3
             for handle, expected in zip(batch["handles"], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]):
                 point = (await checked("inspect_entity", handle=handle))["entity"]
                 assert point["Coordinates"] == expected
+            print(json.dumps({"point_benchmark": {"single": single_metrics, "batch": batch_metrics},
+                              "units": units["variables"]}), flush=True)
             await checked("save_drawing", drawing_path=str(donor))
             donor_hash = digest(donor)
             await checked("open_working_copy", source_path=str(source), output_path=str(target))
@@ -162,6 +179,20 @@ async def run(config, workspace, attach_verified_existing):
                                            insertion_wcs=[22, 38, 0])
             marker = objects["block"]["handle"]
             await tool("set_block_attribute", handle=marker, tag="ID", expected_value="OLD", value="P01")
+            mixed = await tool("edit_batch", operations=[
+                {"operation": "edit_entity", "arguments": {
+                    "handle": objects["circle"]["handle"], "expected_type": "AcDbCircle", "radius": 9}},
+                {"operation": "insert_block", "arguments": {
+                    "name": "SURVEY_MARK", "layer": "SURVEY_TEST", "insertion_wcs": [85, 45, 0]}},
+                {"operation": "set_block_attribute", "arguments": {
+                    "handle": marker, "tag": "ID", "expected_value": "P01", "value": "P02"}},
+                {"operation": "add_annotation", "arguments": {
+                    "kind": "text", "layer": "SURVEY_TEST", "points": [[82, 33, 0]], "text": "BATCH QA"}},
+            ])
+            assert mixed["completed"] == 4, mixed
+            assert (await checked("inspect_entity", handle=objects["circle"]["handle"]))["entity"]["Radius"] == 9
+            assert (await checked("inspect_entity", handle=mixed["results"][1]["handle"]))["entity"]["type"] == "AcDbBlockReference"
+            assert (await checked("inspect_entity", handle=mixed["results"][3]["handle"]))["entity"]["type"] == "AcDbText"
             device = "DWG To PDF.pc3"
             configured = await tool("configure_sheet", name="Acceptance", device=device, landscape=True)
             media = next((item for item in configured["available_media"]
@@ -193,7 +224,7 @@ async def run(config, workspace, attach_verified_existing):
             assert model_objects[objects["polyline3d"]["handle"]]["vertices_wcs"][-1] == [98, 70, 3]
             assert model_objects[objects["copied_contour"]["handle"]]["vertices_wcs"] == donor_vertices
             assert discarded_handle not in model_objects
-            assert any(a["value"] == "P01" for a in (await tool("inspect_block_attributes", handle=marker))["attributes"])
+            assert any(a["value"] == "P02" for a in (await tool("inspect_block_attributes", handle=marker))["attributes"])
             sheet = next(item for item in inventory["layouts"] if item["name"] == "Acceptance")
             saved_viewport = next(item for item in sheet["entities"] if item["handle"] == viewport["handle"])
             assert saved_viewport["DisplayLocked"] and abs(saved_viewport["CustomScale"] - 1) < 1e-9

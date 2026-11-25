@@ -91,7 +91,8 @@ class DrawingTests(unittest.TestCase):
     def test_activate_returns_state_from_verified_cad_app(self):
         self.backend.norm = os.path.normcase
         doc = SimpleNamespace(Path=str(self.work), FullName=str(self.dwg), Activate=Mock())
-        app = SimpleNamespace(Documents=[doc])
+        app = SimpleNamespace(Documents=[doc], ActiveDocument=SimpleNamespace(Path=""))
+        doc.Activate.side_effect = lambda: setattr(app, "ActiveDocument", doc)
         state = {"pid": 101, "hwnd": 1001, "path": str(self.dwg)}
         with (patch.object(self.tools, "app_for_document_switch", return_value=app),
               patch.object(self.tools, "drawing_state", return_value=state) as read_state):

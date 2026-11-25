@@ -33,7 +33,7 @@ EDIT_TYPES = GEOMETRY_TYPES | TEXT_TYPES | {"AcDbBlockReference", "AcDbAlignedDi
 TOOLS = (
     "autocad_identity", "active_drawing", "activate_drawing", "save_copy", "save_drawing",
     "new_working_dwg", "open_working_copy", "open_working_dwg",
-    "close_working_dwg", "list_layouts", "drawing_units", "upsert_layer", "add_geometry", "add_geometry_batch", "edit_batch", "edit_entity",
+    "close_working_dwg", "inspect_entity", "list_layouts", "drawing_units", "upsert_layer", "add_geometry", "add_geometry_batch", "edit_batch", "edit_entity",
     "add_annotation", "define_marker_block", "define_block_from_entities",
     "insert_block", "inspect_block_attributes", "set_block_attribute",
     "configure_sheet", "set_plan_viewport", "export_sheet_pdf",
@@ -111,7 +111,7 @@ class DrawingTools:
 
     def register(self):
         self.backend.document = self.document
-        for name in ("active_drawing", "activate_drawing", "save_copy", "save_drawing"):
+        for name in ("active_drawing", "activate_drawing", "save_copy", "save_drawing", "inspect_entity"):
             self.backend.server.remove_tool(name)
         for name in TOOLS:
             self.backend.tool(getattr(self, name))
@@ -187,7 +187,18 @@ class DrawingTools:
         try:
             yield doc
         finally:
-            doc.EndUndoMark()
+            try:
+                doc.EndUndoMark()
+            except (AttributeError, pythoncom.com_error) as error:
+                if isinstance(error, pythoncom.com_error) and error.hresult not in {-2147418111, -2147417846}:
+                    raise
+                # Layout transitions can temporarily invalidate the automation wrapper.
+                # Rebind the same active, managed file before closing its undo mark.
+                app = self.backend.app()
+                rebound = self.ready_document(app, app.ActiveDocument)
+                if self.backend.norm(rebound.FullName) != self.backend.norm(drawing_path):
+                    raise RuntimeError("Active DWG changed before its undo mark could close.") from error
+                rebound.EndUndoMark()
 
     def app_for_document_switch(self):
         app = self.backend.app()
@@ -254,16 +265,34 @@ class DrawingTools:
             "ucs_y": list(doc.GetVariable("UCSYDIR")),
         }
 
+    def activate_document(self, app, drawing_path):
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                active = app.ActiveDocument
+                if active.Path and self.backend.norm(active.FullName) == self.backend.norm(drawing_path):
+                    return
+                for doc in app.Documents:
+                    if doc.Path and self.backend.norm(doc.FullName) == self.backend.norm(drawing_path):
+                        doc.Activate()
+                        break
+                else:
+                    raise ValueError("Requested DWG is not open.")
+            except pythoncom.com_error as error:
+                if error.hresult not in {-2147418111, -2147417846}:
+                    raise
+            if time.monotonic() >= deadline:
+                raise RuntimeError("AutoCAD did not confirm the requested drawing activation.")
+            pythoncom.PumpWaitingMessages()
+            time.sleep(0.25)
+
     def activate_drawing(self, drawing_path: str) -> dict:
         """Activate an already open drawing by exact path and report the verified AutoCAD identity."""
         if not Path(drawing_path).is_absolute():
             raise ValueError("An absolute drawing path is required.")
         app = self.app_for_document_switch()
-        for doc in app.Documents:
-            if doc.Path and self.backend.norm(doc.FullName) == self.backend.norm(drawing_path):
-                doc.Activate()
-                return self.drawing_state(app)
-        raise ValueError("Requested DWG is not open.")
+        self.activate_document(app, drawing_path)
+        return self.drawing_state(app)
 
     def new_working_dwg(self, output_path: str) -> dict:
         """Create a blank drawing under the working directory, using the default AutoCAD template."""
@@ -331,7 +360,7 @@ class DrawingTools:
         app = self.app_for_document_switch()
         for doc in app.Documents:
             if doc.Path and self.backend.norm(doc.FullName) == self.backend.norm(str(path)):
-                doc.Activate()
+                self.activate_document(app, str(path))
                 return {"path": str(path), "already_open": True}
         doc = self.ready_document(app, app.Documents.Open(str(path), False))
         return {"path": doc.FullName, "already_open": False}
@@ -387,6 +416,11 @@ class DrawingTools:
         if entity.ObjectName == "AcDbPoint":
             result["Coordinates"] = list(entity.Coordinates)
         return result
+
+    def inspect_entity(self, handle: str) -> dict:
+        """Read an active drawing entity by handle, including available coordinates."""
+        doc = self.document()
+        return {"path": doc.FullName, "entity": self.record(doc, doc.HandleToObject(handle))}
 
     def upsert_layer(
         self, drawing_path: str, name: str, aci: int | None = None,
