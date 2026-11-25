@@ -2,8 +2,6 @@
 
 Этот репозиторий настраивает Codex как команду из нескольких специализированных агентов.
 
-В профиле **Plus** главный агент — **GPT-6.1 Sol High**. Исполнительные роли используют GPT-6 Luna, исследователь — GPT-6.1 Sol, независимый reviewer — GPT-6 Astra, а визуальные материалы проверяет GPT-6.1 Terra.
-
 ## Зачем это нужно
 
 Вместо одного агента, который одновременно ищет код, пишет изменения, тестирует и сам себя проверяет, работа разделяется по ролям:
@@ -22,15 +20,15 @@
 
 | Роль | Модель | Reasoning | Доступ |
 |---|---|---:|---|
-| Root / orchestrator | GPT-6.1 Sol | high | workspace-write |
-| Explorer | GPT-6 Luna | medium | read-only |
-| Worker | GPT-6 Luna | medium | workspace-write |
-| Tester | GPT-6 Luna | high | workspace-write |
-| Researcher | GPT-6.1 Sol | medium | read-only |
-| Reviewer | GPT-6 Astra | medium | read-only |
+| Root / orchestrator | GPT-6.2 Sol | medium | workspace-write |
+| Explorer | GPT-6.2 Sol | low | read-only |
+| Worker | GPT-6.2 Sol | medium | workspace-write |
+| Tester | GPT-6.2 Sol | medium | workspace-write |
+| Researcher | GPT-6.2 Sol | medium | read-only |
+| Reviewer | GPT-6.2 Astra | medium | read-only |
 | Visual-inspector | GPT-6.1 Terra | medium | read-only |
 
-Главный принцип профиля Plus: **Sol координирует, Luna выполняет, Astra проверяет по необходимости, Terra анализирует визуальные результаты**.
+Главный принцип профиля Plus: **Sol координирует и выполняет, Astra проверяет по необходимости, Terra анализирует визуальные результаты**.
 
 ## Когда использовать оркестратор
 

@@ -120,7 +120,7 @@ merge_conflicts() {
 select_plan() {
     printf '%s\n' 'Codex plan:'
     printf '%s\n' '  1) Pro  - GPT-6 Astra orchestrates, GPT-5.6 Luna executes, GPT-6 Astra reviews'
-    printf '%s\n' '  2) Plus - GPT-5.6 Luna (max reasoning) orchestrates, GPT-5.6 Luna executes, GPT-6 Astra reviews'
+    printf '%s\n' '  2) Plus - GPT-6.2 Sol handles routine work, GPT-6.2 Astra reviews, GPT-6.1 Terra inspects visuals'
 
     while :; do
         printf '%s' 'Select plan [1/2] (default 1): '

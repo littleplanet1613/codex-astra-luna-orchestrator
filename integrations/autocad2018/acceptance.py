@@ -1,0 +1,254 @@
+"""Live-only acceptance. It refuses before making drawings unless the real guard passes."""
+import argparse
+import asyncio
+import hashlib
+import json
+from pathlib import Path
+import re
+import shutil
+import tempfile
+from time import perf_counter
+import tomllib
+
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+async def call(session, tool, metrics=None, **arguments):
+    start = perf_counter()
+    result = await session.call_tool(tool, arguments)
+    if metrics is not None:
+        metrics.append({
+            "ms": round((perf_counter() - start) * 1000, 2),
+            "request_bytes": len(json.dumps({"name": tool, "arguments": arguments},
+                                            ensure_ascii=False, separators=(",", ":")).encode("utf-8")),
+            "response_bytes": len(result.model_dump_json(exclude_none=True).encode("utf-8")),
+        })
+    if result.isError:
+        messages = [content.text for content in result.content if content.type == "text"]
+        raise RuntimeError(f"{tool}: {' '.join(messages)}")
+    if result.structuredContent is not None:
+        return result.structuredContent
+    return json.loads(result.content[0].text)
+
+
+async def run(config, workspace, attach_verified_existing):
+    config = tomllib.loads(config.read_text(encoding="utf-8"))["mcp_servers"]["autocad"]
+    env = {**config["env"], "AUTOCAD_WORKSPACE": str(workspace)}
+    if attach_verified_existing:
+        env["AUTOCAD_ATTACH"] = "verified-exclusive"
+    parameters = StdioServerParameters(command=config["command"], args=config["args"], env=env)
+    async with stdio_client(parameters) as (reader, writer):
+        async with ClientSession(reader, writer) as session:
+            await session.initialize()
+            registered_tools = {tool.name for tool in (await session.list_tools()).tools}
+            covered = set()
+
+            async def checked(tool_name, metrics=None, **kwargs):
+                print(f"Checking {tool_name}", flush=True)
+                response = await call(session, tool_name, metrics, **kwargs)
+                covered.add(tool_name)
+                return response
+
+            diagnostic = await checked("diagnose_autocad")
+            print(json.dumps(diagnostic, ensure_ascii=False), flush=True)
+            if diagnostic["preflight"] != "passed":
+                return 2
+            if not diagnostic["attach_enabled"]:
+                raise RuntimeError("The deployment's COM permission is off. Use the explicit live-acceptance flag.")
+            active = await checked("autocad_identity")
+            assert active["pid"] == diagnostic["target_pid"] and active["hwnd"] == diagnostic["target_hwnd"]
+            print(json.dumps(active, ensure_ascii=False), flush=True)
+            with tempfile.TemporaryDirectory(dir=workspace, prefix=".acad-run-") as reservation:
+                # Reserve a unique name and keep the finished DWG/PDF alongside it.
+                label = Path(reservation).name.removeprefix(".acad-run-")
+                seed = workspace / f"{label}-seed.dwg"
+                source = workspace / f"{label}-source.dwg"
+                target = workspace / f"{label}-acceptance.dwg"
+                donor = workspace / f"{label}-donor.dwg"
+                replica = workspace / f"{label}-saved-copy.dwg"
+                pdf = workspace / f"{label}-acceptance.pdf"
+            await checked("new_working_dwg", output_path=str(seed))
+            await checked("close_working_dwg", drawing_path=str(seed))
+            with seed.open("rb") as original, source.open("xb") as baseline:
+                shutil.copyfileobj(original, baseline)
+            original_hash = digest(source)
+            assert source.read_bytes()[:6] == b"AC1032"
+            await checked("new_working_dwg", output_path=str(donor))
+            await checked("upsert_layer", drawing_path=str(donor), name="SURVEY_TEST", aci=7)
+            donor_vertices = [[100, 50, 0], [110, 50, 0], [110, 60, 0]]
+            donor_object = await checked(
+                "add_geometry", drawing_path=str(donor), layer="SURVEY_TEST", kind="polyline",
+                points=donor_vertices, closed=True,
+            )
+            units = await checked("drawing_units", drawing_path=str(donor))
+            observed_units = int(units["variables"]["INSUNITS"])
+            points = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+            single_metrics, batch_metrics = [], []
+            for coordinates in points:
+                point = await checked("add_geometry", metrics=single_metrics, drawing_path=str(donor),
+                                      layer="SURVEY_TEST", kind="point", points=[coordinates])
+                assert point["Coordinates"] == coordinates
+            batch = await checked("add_geometry_batch", metrics=batch_metrics, drawing_path=str(donor),
+                                  layer="SURVEY_TEST", kind="point",
+                                  items=[[coordinates] for coordinates in points],
+                                  expected_insunits=observed_units)
+            assert batch["created"] == batch["entity_count_delta"] == 3
+            assert len(set(batch["handles"])) == 3
+            for handle, expected in zip(batch["handles"], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]):
+                point = (await checked("inspect_entity", handle=handle))["entity"]
+                assert point["Coordinates"] == expected
+            print(json.dumps({"point_benchmark": {"single": single_metrics, "batch": batch_metrics},
+                              "units": units["variables"]}), flush=True)
+            await checked("save_drawing", drawing_path=str(donor))
+            donor_hash = digest(donor)
+            await checked("open_working_copy", source_path=str(source), output_path=str(target))
+
+            async def tool(tool_name, **kwargs):
+                return await checked(tool_name, drawing_path=str(target), **kwargs)
+
+            current = await checked("active_drawing")
+            assert Path(current["path"]) == target and current["pid"] == active["pid"]
+            activated = await checked("activate_drawing", drawing_path=str(donor))
+            assert Path(activated["path"]) == donor and activated["pid"] == active["pid"]
+            activated = await tool("activate_drawing")
+            assert Path(activated["path"]) == target and activated["hwnd"] == active["hwnd"]
+            assert Path((await checked("selected_entities"))["path"]) == target
+            await tool("upsert_layer", name="SURVEY_TEST", aci=7, plottable=True)
+            assert any(layer["name"] == "SURVEY_TEST" for layer in (await checked("layers"))["layers"])
+            objects = {}
+            specimens = {
+                "point": {"points": [[65, 40, 0]]},
+                "line": {"points": [[10, 15, 0], [100, 15, 0]]},
+                "circle": {"points": [[55, 85, 0]], "radius": 7},
+                "polyline": {"points": [[15, 50, 0], [45, 50, 0], [45, 65, 0]], "closed": True},
+                "polyline3d": {"points": [[70, 63, 1], [90, 68, 2], [98, 70, 3]]},
+                "arc": {"points": [[30, 92, 0]], "radius": 9, "angles_rad": [0, 2.2]},
+            }
+            for kind, data in specimens.items():
+                objects[kind] = await tool("add_geometry", kind=kind, layer="SURVEY_TEST", **data)
+            initial_line = await checked("inspect_entity", handle=objects["line"]["handle"])
+            assert initial_line["entity"]["EndPoint"] == [100, 15, 0]
+            edits = await tool("edit_batch", operations=[{"operation": "edit_entity", "arguments": {
+                "handle": objects["line"]["handle"], "expected_type": "AcDbLine",
+                "line_endpoints_wcs": [[10, 15, 0], [103, 15, 0]],
+            }}])
+            assert edits["completed"] == 1
+            await tool("edit_entity", handle=objects["line"]["handle"], expected_type="AcDbLine",
+                       line_endpoints_wcs=[[10, 15, 0], [103, 15, 0]])
+            boundary = await tool("add_geometry", layer="SURVEY_TEST", kind="line",
+                                  points=[[105, 12, 0], [105, 18, 0]])
+            extended = await tool("extend_line_to_intersection", handle=objects["line"]["handle"],
+                                  boundary_handle=boundary["handle"], endpoint="end",
+                                  plane_origin=[0, 0, 0], plane_normal=[0, 0, 1])
+            assert extended["intersection_wcs"] == [105, 15, 0]
+            await tool("edit_entity", handle=objects["circle"]["handle"], expected_type="AcDbCircle", radius=8)
+            moved_polyline = [[16, 50, 0], [45, 50, 0], [45, 65, 0]]
+            await tool("set_polyline_vertices", handle=objects["polyline"]["handle"], vertices_wcs=moved_polyline)
+            copied = await tool("copy_reviewed_polyline", source_drawing_path=str(donor),
+                                source_handle=donor_object["handle"], expected_vertices_wcs=donor_vertices)
+            objects["copied_contour"] = copied["copied"]
+            deleted_vertices = [[3, 2, 0], [4, 2, 0], [4, 3, 0]]
+            discarded = await tool("add_geometry", kind="polyline", layer="SURVEY_TEST",
+                                   points=deleted_vertices, closed=True)
+            discarded_handle = discarded["handle"]
+            removed = await tool("delete_entity", handle=discarded_handle, expected_vertices_wcs=deleted_vertices)
+            assert removed["deleted"]["handle"] == discarded_handle
+            lines = await checked("model_entities", layer="SURVEY_TEST", object_type="AcDbLine", limit=1)
+            assert lines["total"] == 2 and len(lines["entities"]) == 1
+            for kind, points, text in (
+                ("text", [[12, 105, 0]], f"CAD {diagnostic['target_release']} ACCEPTANCE"),
+                ("mtext", [[72, 98, 0]], "Reference point P01"),
+                ("aligned_dimension", [[10, 15, 0], [105, 15, 0], [55, 5, 0]], ""),
+                ("multileader", [[55, 85, 0], [73, 88, 0]], "P01 / ELEV +0.000"),
+            ):
+                objects[kind] = await tool("add_annotation", kind=kind, layer="SURVEY_TEST",
+                                           points=points, text=text)
+            await tool("edit_entity", handle=objects["multileader"]["handle"], expected_type="AcDbMLeader",
+                       leader_arrow_size=2.5, leader_landing_gap=4)
+            await tool("define_marker_block", name="SURVEY_MARK", radius=2, attribute_tag="ID",
+                       default_value="OLD")
+            block_definition = await tool("define_block_from_entities", name="SURVEY_DETAIL",
+                                          base_wcs=[30, 92, 0], handles=[objects["arc"]["handle"]])
+            assert block_definition["objects"] == 1
+            objects["block"] = await tool("insert_block", name="SURVEY_MARK", layer="SURVEY_TEST",
+                                           insertion_wcs=[22, 38, 0])
+            marker = objects["block"]["handle"]
+            await tool("set_block_attribute", handle=marker, tag="ID", expected_value="OLD", value="P01")
+            mixed = await tool("edit_batch", operations=[
+                {"operation": "edit_entity", "arguments": {
+                    "handle": objects["circle"]["handle"], "expected_type": "AcDbCircle", "radius": 9}},
+                {"operation": "insert_block", "arguments": {
+                    "name": "SURVEY_MARK", "layer": "SURVEY_TEST", "insertion_wcs": [85, 45, 0]}},
+                {"operation": "set_block_attribute", "arguments": {
+                    "handle": marker, "tag": "ID", "expected_value": "P01", "value": "P02"}},
+                {"operation": "add_annotation", "arguments": {
+                    "kind": "text", "layer": "SURVEY_TEST", "points": [[82, 33, 0]], "text": "BATCH QA"}},
+            ])
+            assert mixed["completed"] == 4, mixed
+            assert (await checked("inspect_entity", handle=objects["circle"]["handle"]))["entity"]["Radius"] == 9
+            assert (await checked("inspect_entity", handle=mixed["results"][1]["handle"]))["entity"]["type"] == "AcDbBlockReference"
+            assert (await checked("inspect_entity", handle=mixed["results"][3]["handle"]))["entity"]["type"] == "AcDbText"
+            device = "DWG To PDF.pc3"
+            configured = await tool("configure_sheet", name="Acceptance", device=device, landscape=True)
+            media = next((item for item in configured["available_media"]
+                          if re.search(r"\bA4\b|_A4_", item, re.I)
+                          and "full" not in item.casefold()), None)
+            if media is None:
+                raise RuntimeError("No regular A4 media was reported by the AutoCAD PDF device.")
+            await tool("configure_sheet", name="Acceptance", device=device, media=media, landscape=True)
+            initial = await checked("drawing_inventory")
+            initial_sheet = next(item for item in initial["layouts"] if item["name"] == "Acceptance")
+            initial_handles = {item["handle"] for item in initial_sheet["entities"]}
+            viewport = await tool("set_plan_viewport", layout="Acceptance", center_paper=[140, 105, 0],
+                                  width=220, height=150, target_wcs=[56, 58, 0], scale=1)
+            await tool("add_annotation", kind="text", layout="Acceptance", layer="SURVEY_TEST",
+                       points=[[28, 15, 0]], text="SYNTHETIC TEST SHEET / 1:1", height=3.5)
+            await tool("save_drawing")
+            await tool("close_working_dwg")
+            opened = await tool("open_working_dwg")
+            assert not opened["already_open"]
+            inventory = await checked("drawing_inventory")
+            layouts = (await tool("list_layouts"))["layouts"]
+            model_name = next(item["name"] for item in layouts if item["model"])
+            model = next(item for item in inventory["layouts"] if item["name"] == model_name)
+            model_objects = {item["handle"]: item for item in model["entities"]}
+            for item in objects.values():
+                assert model_objects[item["handle"]]["type"] == item["type"]
+            assert model_objects[objects["line"]["handle"]]["EndPoint"] == [105, 15, 0]
+            assert model_objects[objects["polyline"]["handle"]]["vertices_wcs"] == moved_polyline
+            assert model_objects[objects["polyline3d"]["handle"]]["vertices_wcs"][-1] == [98, 70, 3]
+            assert model_objects[objects["copied_contour"]["handle"]]["vertices_wcs"] == donor_vertices
+            assert discarded_handle not in model_objects
+            assert any(a["value"] == "P02" for a in (await tool("inspect_block_attributes", handle=marker))["attributes"])
+            sheet = next(item for item in inventory["layouts"] if item["name"] == "Acceptance")
+            saved_viewport = next(item for item in sheet["entities"] if item["handle"] == viewport["handle"])
+            assert saved_viewport["DisplayLocked"] and abs(saved_viewport["CustomScale"] - 1) < 1e-9
+            new_viewports = {item["handle"] for item in sheet["entities"]
+                             if item["type"] == "AcDbViewport"} - initial_handles
+            assert new_viewports == {viewport["handle"]}
+            await tool("export_sheet_pdf", layout="Acceptance", output_path=str(pdf))
+            assert pdf.read_bytes()[:5] == b"%PDF-"
+            finished = await tool("save_copy", output_path=str(replica))
+            assert Path(finished["path"]) == replica and replica.read_bytes()[:6] == b"AC1032"
+            assert digest(source) == original_hash
+            assert digest(donor) == donor_hash
+            assert covered == registered_tools, f"Unverified MCP tools: {sorted(registered_tools - covered)}"
+            print(json.dumps({"dwg": str(target), "pdf": str(pdf), "source_sha256": original_hash,
+                              "model_handles": len(objects), "viewport": saved_viewport["handle"],
+                              "verified_tools": sorted(covered),
+                              "visual_qa": "pending"}, ensure_ascii=False), flush=True)
+            return 0
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--workspace", type=Path, required=True)
+    parser.add_argument("--attach-verified-existing", action="store_true")
+    args = parser.parse_args()
+    raise SystemExit(asyncio.run(run(args.config, args.workspace.resolve(strict=True), args.attach_verified_existing)))

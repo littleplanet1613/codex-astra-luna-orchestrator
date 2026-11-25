@@ -1,0 +1,34 @@
+# Deliberately disabled. Do NOT enable live COM until the upstream backend
+# is adapted to the existing product/PID/HWND and managed-copy guard.
+# Use a disposable workspace and an isolated test config, not the normal profile.
+[mcp_servers.autocad_upstream_benchmark]
+enabled = false
+command = "uvx"
+args = ["--from", "autocad-mcp-pro[com,pdf]==1.8.0", "autocad-mcp"]
+startup_timeout_sec = 120
+tool_timeout_sec = 300
+default_tools_approval_mode = "prompt"
+
+[mcp_servers.autocad_upstream_benchmark.env]
+AUTOCAD_MCP_BACKEND = "com"
+CAD_LAUNCH = "never"
+# Select only the actually approved release; example below is 2018.
+CAD_PROGID = "AutoCAD.Application.22"
+DISCOVERY_MODE = "search"
+TOOL_PROFILE = "lean"
+TOOL_PACKS = "core"
+ALLOWED_PATHS = "C:/CAD/test-copies"
+READ_ONLY = "true"
+TOOL_DENYLIST = "system_run_command,system_run_lisp"
+LISP_POLICY = "read"
+
+[mcp_servers.autocad_upstream_benchmark.tools.call_tool]
+approval_mode = "prompt"
+output_token_limit = 4000
+
+[mcp_servers.autocad_upstream_benchmark.tools.cad_batch]
+approval_mode = "prompt"
+output_token_limit = 4000
+
+[mcp_servers.autocad_upstream_benchmark.tools.entity_list]
+output_token_limit = 3000

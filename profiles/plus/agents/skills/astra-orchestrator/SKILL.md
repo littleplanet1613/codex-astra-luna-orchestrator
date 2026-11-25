@@ -10,10 +10,10 @@ The user's instructions and existing approval/sandbox/security constraints take 
 ## Select a mode
 - **Quick:** direct, localized changes or answers. No delegation requirement.
 - **Standard:** use only the roles that add value to multi-file work; define ownership and acceptance checks.
-- **Full:** high-risk or independently parallel workstreams. Explore, implement, test, review, and inspect visuals if needed.
+- **Full:** high-risk or independently parallel workstreams. Choose the necessary roles, preferring sequential work when later steps depend on earlier results.
 
 ## Roles and model source
-Use the installed `.codex/agents/*.toml` role definitions as the source of truth for model and reasoning effort; do not hardcode model IDs into spawn prompts. On Plus, the root is Sol, with Luna execution, Sol research, Astra review, and Terra visual inspection. On Pro, retain the existing Astra root and current pinned roles unless explicitly changed. Role availability and model access must be checked in the installed Codex CLI.
+Use the installed `.codex/agents/*.toml` role definitions as the source of truth for model and reasoning effort; do not hardcode model IDs into spawn prompts. On Plus, Sol handles orchestration, execution and research, Astra reviews substantive changes, and Terra inspects visual evidence. On Pro, retain the existing Astra root and current pinned roles unless explicitly changed. Role availability and model access must be checked in the installed Codex CLI.
 
 - explorer: read-only repository mapping
 - researcher: read-only, versioned evidence from primary documentation

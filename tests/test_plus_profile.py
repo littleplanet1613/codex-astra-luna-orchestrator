@@ -7,23 +7,25 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 PLUS = ROOT / "profiles" / "plus" / "codex"
 
 ROLES = {
-    "explorer": ("gpt-6-luna", "medium", "read-only"),
-    "researcher": ("gpt-6.1-sol", "medium", "read-only"),
-    "worker": ("gpt-6-luna", "medium", "workspace-write"),
-    "tester": ("gpt-6-luna", "high", "workspace-write"),
-    "reviewer": ("gpt-6-astra", "medium", "read-only"),
-    "visual-inspector": ("gpt-6.1-terra", "medium", "read-only"),
+    'explorer': ('gpt-6.2-sol', 'low', 'read-only'),
+    'researcher': ('gpt-6.2-sol', 'medium', 'read-only'),
+    'worker': ('gpt-6.2-sol', 'medium', 'workspace-write'),
+    'tester': ('gpt-6.2-sol', 'medium', 'workspace-write'),
+    'reviewer': ('gpt-6.2-astra', 'medium', 'read-only'),
+    'visual-inspector': ('gpt-6.1-terra', 'medium', 'read-only'),
 }
+
 
 class PlusProfileTests(unittest.TestCase):
     def test_root_security_and_model(self):
         config = tomllib.loads((PLUS / "config.toml").read_text(encoding="utf-8"))
-        self.assertEqual(config["model"], "gpt-6.1-sol")
-        self.assertEqual(config["model_reasoning_effort"], "high")
+        self.assertEqual(config["model"], "gpt-6.2-sol")
+        self.assertEqual(config["model_reasoning_effort"], "medium")
         self.assertEqual(config["approval_policy"], "on-request")
         self.assertEqual(config["sandbox_mode"], "workspace-write")
-        self.assertEqual(config["agents"]["max_concurrent_threads_per_session"], 4)
-        self.assertEqual(config["agents"]["default_subagent_model"], "gpt-6-luna")
+        self.assertEqual(config["agents"]["max_concurrent_threads_per_session"], 2)
+        self.assertEqual(config["agents"]["max_depth"], 1)
+        self.assertEqual(config["agents"]["default_subagent_model"], "gpt-6.2-sol")
         self.assertEqual({key for key, value in config["agents"].items() if isinstance(value, dict)}, set(ROLES))
         for name in ROLES:
             self.assertEqual(config["agents"][name]["config_file"], f"agents/{name}.toml")
